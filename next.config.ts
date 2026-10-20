@@ -1,8 +1,11 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
   cacheComponents: true,
+  experimental: {
+    // Fotos para o gerador de legendas (até 5 MB + overhead do multipart).
+    serverActions: { bodySizeLimit: "6mb" },
+  },
   partialPrefetching: true,
   turbopack: {
     rules: {

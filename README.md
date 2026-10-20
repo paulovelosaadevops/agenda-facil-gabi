@@ -1,36 +1,70 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Agenda Fácil 💅
 
-## Getting Started
+Plataforma de gestão para nail designers: agenda, clientes, serviços, link público de agendamento,
+lembretes por WhatsApp e IA (atendente virtual no WhatsApp e gerador de legendas para o Instagram).
 
-First, run the development server:
+**Stack:** Next.js 16 (App Router, Cache Components) · Supabase (Postgres + Auth + RLS) · Tailwind 4 · Claude API (`@anthropic-ai/sdk`).
+
+## Rodando localmente
+
+Pré-requisitos: Node 22+ e Docker.
 
 ```bash
+npm install
+npm run db:start            # sobe o Supabase local e aplica supabase/migrations
+cp .env.example .env.local  # preencha com as chaves que o comando acima imprimiu
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Abra http://localhost:3000, crie uma conta e configure o estúdio. O onboarding já cria um expediente
+(terça a sábado) e alguns serviços de exemplo.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Para a IA, coloque sua chave em `ANTHROPIC_API_KEY` (https://console.anthropic.com/).
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Funcionalidades
 
-## Learn More
+| Área | Rota | O que faz |
+|---|---|---|
+| Início | `/painel` | Agenda do dia, faturamento do mês, aniversariantes, link público |
+| Agenda | `/painel/agenda` | Visão por dia, novo agendamento, concluir/faltou/cancelar |
+| Clientes | `/painel/clientes` | Cadastro, busca, ficha com histórico e total gasto |
+| Serviços | `/painel/servicos` | Preço, duração, descrição (usada pela IA), ativar/desativar |
+| IA | `/painel/ia` | Legendas a partir da foto + simulador da atendente do WhatsApp |
+| Ajustes | `/painel/configuracoes` | Dados do estúdio, regras de agendamento, expediente, folgas, instruções da IA |
+| Público | `/agendar/{slug}` | A cliente escolhe serviço, dia e horário livre e agenda sozinha |
 
-To learn more about Next.js, take a look at the following resources:
+## Como funciona
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- **Disponibilidade** (`src/lib/availability.ts`): função pura que cruza expediente, agendamentos,
+  bloqueios, antecedência mínima e máxima no fuso do estúdio. Coberta por testes (`npm test`).
+- **Reserva** (`src/lib/booking.ts`): uma única função usada pelo painel, pela página pública e pela IA.
+  Uma *exclusion constraint* no Postgres impede horários sobrepostos mesmo com requisições simultâneas.
+- **WhatsApp** (`src/lib/messaging/`): interface `MessagingProvider`. Hoje há só o provedor `console`
+  (registra no log). Para ativar um provedor real, implemente `sendText` e `parseWebhook` num novo arquivo e
+  registre em `index.ts`; depois aponte o webhook do provedor para
+  `POST /api/whatsapp/{slug}?token=WHATSAPP_WEBHOOK_SECRET`.
+- **IA no WhatsApp** (`src/lib/ai/assistant.ts`): Claude com ferramentas para listar serviços, consultar
+  horários, agendar, listar e cancelar agendamentos da própria cliente (o telefone vem da conversa, nunca do modelo).
+  Teste pelo simulador em `/painel/ia` sem precisar de provedor.
+- **Lembretes** (`/api/cron/reminders`): roda de hora em hora (`vercel.json`) e envia lembrete
+  `reminder_hours_before` horas antes. Exige `Authorization: Bearer CRON_SECRET`.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### Testar o webhook localmente
 
-## Deploy on Vercel
+```bash
+curl -X POST "http://localhost:3000/api/whatsapp/SEU-SLUG?token=SEU_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"from":"5511999998888","name":"Ana","text":"Oi! Tem horário amanhã?"}'
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+A resposta da IA aparece no terminal do `npm run dev` (provedor `console`).
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Scripts
+
+`npm run dev` · `npm run build` · `npm test` · `npm run typecheck` · `npm run lint` · `npm run db:start` / `db:stop` / `db:reset`
+
+## Deploy
+
+1. Crie um projeto em supabase.com e rode `npx supabase link` + `npx supabase db push`.
+2. Importe o repositório na Vercel e configure as variáveis do `.env.example`.
+3. Em Supabase → Authentication → URL Configuration, cadastre a URL de produção.
