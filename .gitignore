@@ -1,42 +1,42 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
-
 # dependencies
-/node_modules
-/.pnp
-.pnp.*
-.yarn/*
-!.yarn/patches
-!.yarn/plugins
-!.yarn/releases
-!.yarn/versions
+node_modules/
 
-# testing
-/coverage
+# Expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
 
-# next.js
-/.next/
-/out/
-
-# production
-/build
-
-# misc
-.DS_Store
+# Native (gerados por Continuous Native Generation)
+/ios
+/android
+.kotlin/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
 *.pem
 
-# debug
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.pnpm-debug.log*
+# Sobras da versão Next.js e arquivos locais do Supabase CLI
+.next/
+supabase/.temp/
+supabase/.branches/
 
-# env files (can opt-in for committing if needed)
+# Metro
+.metro-health-check*
+
+# logs
+npm-debug.*
+
+# macOS
+.DS_Store
+
+# env files (segredos)
 .env*
 !.env.example
-
-# vercel
-.vercel
+supabase/functions/.env
 
 # typescript
 *.tsbuildinfo
-next-env.d.ts

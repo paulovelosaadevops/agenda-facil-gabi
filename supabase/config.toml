@@ -244,6 +244,15 @@ otp_expiry = 3600
 # admin_email = "admin@email.com"
 # sender_name = "Admin"
 
+# Código de confirmação do agendamento (login sem senha). Conta nova recebe "confirmation"; conta existente, "magic_link".
+[auth.email.template.confirmation]
+subject = "Seu código para confirmar o agendamento"
+content_path = "./supabase/templates/codigo.html"
+
+[auth.email.template.magic_link]
+subject = "Seu código para confirmar o agendamento"
+content_path = "./supabase/templates/codigo.html"
+
 # Uncomment to customize email template
 # [auth.email.template.invite]
 # subject = "You have been invited"
@@ -413,3 +422,50 @@ enabled = true
 # formatted with uppercase keywords, indent 2, max width 180, trailing commas,
 # and column/key alignment. Set to "null" to emit raw, unformatted SQL.
 # format_options = "{\"keywordCase\":\"upper\",\"indent\":2,\"maxWidth\":180,\"commaStyle\":\"trailing\"}"
+
+# Edge Functions do Agenda Fácil. A verificação de JWT no gateway fica desligada porque:
+# - public-booking é público; whatsapp-webhook e reminders usam token próprio;
+# - panel valida o JWT da usuária dentro da função (requireOwner).
+[functions.public-booking]
+verify_jwt = false
+
+[functions.panel]
+verify_jwt = false
+
+[functions.whatsapp-webhook]
+verify_jwt = false
+
+[functions.reminders]
+verify_jwt = false
+
+[functions.calendar]
+verify_jwt = false
+
+# Projeto na nuvem (Supabase "Agenda Fácil"). Aplicar com: npx supabase config push --project-ref fvglaxfkefuyfejwteip
+[remotes.production]
+project_id = "fvglaxfkefuyfejwteip"
+
+[remotes.production.auth]
+site_url = "https://agenda-facil-gabi.expo.app"
+additional_redirect_urls = ["https://agenda-facil-gabi.expo.app/**", "agendafacil://**", "exp://**"]
+
+[remotes.production.auth.email]
+enable_confirmations = false
+otp_length = 6
+otp_expiry = 3600
+max_frequency = "30s"
+
+# E-mails do login (código de confirmação) pelo Brevo. Antes do "config push", defina no terminal
+# BREVO_SMTP_LOGIN e BREVO_SMTP_KEY (Brevo > SMTP & API > SMTP).
+[remotes.production.auth.email.smtp]
+enabled = true
+host = "smtp-relay.brevo.com"
+port = 587
+user = "env(BREVO_SMTP_LOGIN)"
+pass = "env(BREVO_SMTP_KEY)"
+admin_email = "gabimarquinails@gmail.com"
+sender_name = "Gabi Marqui Nail Designer"
+
+[remotes.production.auth.mfa.totp]
+enroll_enabled = true
+verify_enabled = true

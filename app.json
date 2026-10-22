@@ -1,0 +1,77 @@
+{
+  "expo": {
+    "name": "Gabi Marqui",
+    "slug": "agenda-facil",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "agendafacil",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "bundleIdentifier": "app.agendafacil",
+      "supportsTablet": true,
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "package": "app.agendafacil",
+      "adaptiveIcon": {
+        "backgroundColor": "#1D1A18",
+        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "backgroundImage": "./assets/images/android-icon-background.png",
+        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
+    },
+    "web": {
+      "output": "server",
+      "favicon": "./assets/images/favicon.png",
+      "name": "Gabi Marqui Nail Designer",
+      "shortName": "Gabi Marqui",
+      "themeColor": "#F7F3EE",
+      "backgroundColor": "#F7F3EE"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#1D1A18",
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 260,
+          "dark": {
+            "backgroundColor": "#1D1A18",
+            "image": "./assets/images/splash-icon.png"
+          }
+        }
+      ],
+      "expo-sqlite",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Escolha fotos dos seus trabalhos para gerar legendas para o Instagram.",
+          "cameraPermission": "Fotografe seus trabalhos para gerar legendas para o Instagram."
+        }
+      ],
+      "expo-font",
+      "expo-image",
+      "expo-status-bar",
+      "expo-sharing"
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    },
+    "owner": "paulovelosaaa",
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "f32d6d16-250e-4197-a0ee-fdd6ce3bd6d8"
+      }
+    }
+  }
+}

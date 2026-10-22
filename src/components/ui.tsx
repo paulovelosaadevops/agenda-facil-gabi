@@ -1,283 +1,426 @@
-import clsx from "clsx";
-import { ChevronRight, ChevronsUpDown } from "lucide-react";
-import Link from "next/link";
-import type { ComponentProps, ReactNode } from "react";
+import * as Haptics from "expo-haptics";
+import { Link, type Href } from "expo-router";
+import {
+  Children,
+  cloneElement,
+  isValidElement,
+  type ComponentProps,
+  type ReactElement,
+  type ReactNode,
+} from "react";
+import {
+  ActivityIndicator,
+  Platform,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Switch as RNSwitch,
+  Text as RNText,
+  TextInput,
+  View,
+  type StyleProp,
+  type ViewStyle,
+} from "react-native";
+import { fontFamily, Serif, Type, useTheme, type Theme } from "@/lib/theme";
+import { Icon, type IconName } from "./icon";
 
-/* ---------- Botões ---------- */
+export const hairline = StyleSheet.hairlineWidth;
 
-type ButtonVariant = "filled" | "tinted" | "gray" | "plain" | "destructive";
-type ButtonSize = "sm" | "md" | "lg";
-
-const buttonVariants: Record<ButtonVariant, string> = {
-  filled: "bg-accent-strong text-accent-fg hover:brightness-110 active:brightness-95",
-  tinted: "bg-accent/12 text-accent hover:bg-accent/18",
-  gray: "bg-fill text-label hover:bg-fill/70",
-  plain: "text-accent hover:opacity-70",
-  destructive: "bg-red/10 text-red hover:bg-red/15",
-};
-
-const buttonSizes: Record<ButtonSize, string> = {
-  sm: "h-8 rounded-full px-3.5 text-[13px]",
-  md: "h-10 rounded-xl px-4 text-[15px]",
-  lg: "h-[50px] rounded-[14px] px-5 text-[17px]",
-};
-
-export function buttonClass(variant: ButtonVariant = "filled", size: ButtonSize = "md", className?: string) {
-  return clsx(
-    "inline-flex shrink-0 select-none items-center justify-center gap-1.5 font-semibold whitespace-nowrap transition active:scale-[0.97] disabled:pointer-events-none disabled:opacity-40",
-    buttonVariants[variant],
-    buttonSizes[size],
-    variant === "plain" && "!px-0",
-    className,
-  );
+export function tap() {
+  if (Platform.OS === "ios") void Haptics.selectionAsync();
 }
 
-export function Button({
-  variant,
-  size,
-  className,
+/* ---------- Texto ---------- */
+
+type TextVariant = keyof typeof Type;
+type TextColor = "label" | "label2" | "label3" | "accent" | "champagne" | "red" | "green" | "orange" | "blue" | "onAccent";
+
+/** Família da variante: títulos usam a serifada; o resto, a fonte do sistema. */
+export function familyOf(variant: TextVariant): string | undefined {
+  const t = Type[variant] as { fontFamily?: string };
+  return t.fontFamily ?? fontFamily;
+}
+
+/** Cor com transparência a partir de um hex do tema ("#RRGGBB"). */
+export function withAlpha(hex: string, alpha: number): string {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
+}
+
+export function Text({
+  variant = "body",
+  color = "label",
+  style,
   ...props
-}: ComponentProps<"button"> & { variant?: ButtonVariant; size?: ButtonSize }) {
-  return <button className={buttonClass(variant, size, className)} {...props} />;
+}: ComponentProps<typeof RNText> & { variant?: TextVariant; color?: TextColor }) {
+  const theme = useTheme();
+  return <RNText style={[Type[variant], { color: theme[color], fontFamily: familyOf(variant) }, style]} {...props} />;
 }
 
-/** Botão redondo só com ícone (ex.: "+" na barra de navegação). */
-export function iconButtonClass(variant: "tinted" | "gray" | "filled" = "tinted", className?: string) {
-  return clsx(
-    "inline-flex size-8 shrink-0 items-center justify-center rounded-full transition active:scale-95",
-    variant === "tinted" && "bg-accent/12 text-accent hover:bg-accent/18",
-    variant === "gray" && "bg-fill text-label-2 hover:text-label",
-    variant === "filled" && "bg-accent-strong text-accent-fg",
-    className,
+/* ---------- Tela ---------- */
+
+/**
+ * Conteúdo rolável da tela. Precisa ser o primeiro filho da tela para o título grande
+ * do iOS encolher ao rolar (contentInsetAdjustmentBehavior).
+ */
+export function Screen({
+  children,
+  refreshing,
+  onRefresh,
+  contentStyle,
+  keyboard,
+}: {
+  children: ReactNode;
+  refreshing?: boolean;
+  onRefresh?: () => void;
+  contentStyle?: StyleProp<ViewStyle>;
+  keyboard?: boolean;
+}) {
+  const theme = useTheme();
+  return (
+    <ScrollView
+      style={{ flex: 1, backgroundColor: theme.bg }}
+      contentInsetAdjustmentBehavior="automatic"
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode={keyboard ? "interactive" : "on-drag"}
+      automaticallyAdjustKeyboardInsets
+      refreshControl={onRefresh ? <RefreshControl refreshing={Boolean(refreshing)} onRefresh={onRefresh} /> : undefined}
+      contentContainerStyle={[styles.screenContent, contentStyle]}
+    >
+      {children}
+    </ScrollView>
   );
 }
 
-/* ---------- Superfícies ---------- */
+/* ---------- Listas agrupadas ---------- */
 
-export function Card({ className, ...props }: ComponentProps<"div">) {
-  return <div className={clsx("rounded-2xl bg-surface p-4", className)} {...props} />;
-}
-
-/** Seção de lista agrupada (como no app Ajustes do iPhone). */
-export function List({
+/** Seção agrupada (como no app Ajustes). Insere separadores entre as linhas. */
+export function Section({
   header,
   footer,
   children,
-  className,
+  style,
 }: {
-  header?: ReactNode;
+  header?: string;
   footer?: ReactNode;
   children: ReactNode;
-  className?: string;
+  style?: StyleProp<ViewStyle>;
 }) {
+  const theme = useTheme();
+  const items = Children.toArray(children).filter(isValidElement) as ReactElement<{ last?: boolean }>[];
   return (
-    <section className={clsx("mb-7", className)}>
-      {header && <h2 className="px-4 pb-1.5 text-[13px] text-label-2 uppercase">{header}</h2>}
-      <div className="overflow-hidden rounded-xl bg-surface">{children}</div>
-      {footer && <p className="px-4 pt-1.5 text-[13px] leading-snug text-label-2">{footer}</p>}
-    </section>
+    <View style={[styles.section, style]}>
+      {header && (
+        <Text variant="overline" color="label2" style={styles.sectionHeader}>
+          {header.toUpperCase()}
+        </Text>
+      )}
+      <View style={[styles.sectionBody, { backgroundColor: theme.surface }]}>
+        {items.map((child, i) => cloneElement(child, { last: i === items.length - 1 }))}
+      </View>
+      {footer != null &&
+        (typeof footer === "string" ? (
+          <Text variant="footnote" color="label2" style={styles.sectionFooter}>
+            {footer}
+          </Text>
+        ) : (
+          <View style={styles.sectionFooter}>{footer}</View>
+        ))}
+    </View>
   );
 }
 
-const rowBase =
-  "relative flex min-h-11 w-full items-center gap-3 px-4 py-2.5 text-left after:absolute after:right-0 after:bottom-0 after:h-px after:bg-separator last:after:hidden";
+function Separator({ inset, theme }: { inset: number; theme: Theme }) {
+  return <View style={{ height: hairline, backgroundColor: theme.separator, marginLeft: inset }} />;
+}
 
-export function Row({
-  href,
-  external,
-  onClick,
-  leading,
-  title,
-  subtitle,
-  detail,
-  chevron,
-  tone = "default",
-  className,
-}: {
-  href?: string;
-  external?: boolean;
-  onClick?: () => void;
-  leading?: ReactNode;
+interface RowProps {
   title: ReactNode;
   subtitle?: ReactNode;
   detail?: ReactNode;
+  leading?: ReactNode;
+  trailing?: ReactNode;
   chevron?: boolean;
   tone?: "default" | "accent" | "destructive" | "muted";
-  className?: string;
-}) {
-  const interactive = Boolean(href || onClick);
-  const classes = clsx(
-    rowBase,
-    leading ? "after:left-[3.75rem]" : "after:left-4",
-    interactive && "cursor-pointer transition-colors hover:bg-fill-2 active:bg-fill",
-    className,
-  );
-  const content = (
-    <>
-      {leading}
-      <span className="min-w-0 flex-1">
-        <span
-          className={clsx(
-            "block truncate text-[16px] md:text-[15px]",
-            tone === "accent" && "text-accent",
-            tone === "destructive" && "text-red",
-            tone === "muted" && "text-label-2",
+  href?: Href;
+  onPress?: () => void;
+  last?: boolean;
+  /** Recuo do separador quando há ícone/avatar à esquerda. */
+  inset?: number;
+  numberOfLines?: number;
+}
+
+export function Row({
+  title,
+  subtitle,
+  detail,
+  leading,
+  trailing,
+  chevron,
+  tone = "default",
+  href,
+  onPress,
+  last,
+  inset,
+  numberOfLines = 1,
+}: RowProps) {
+  const theme = useTheme();
+  const titleColor = tone === "accent" ? "accent" : tone === "destructive" ? "red" : tone === "muted" ? "label2" : "label";
+  const content = (pressed: boolean) => (
+    <View>
+      <View style={[styles.row, pressed && { backgroundColor: theme.fill }]}>
+        {leading}
+        <View style={styles.rowText}>
+          {typeof title === "string" ? (
+            <Text color={titleColor} numberOfLines={numberOfLines}>
+              {title}
+            </Text>
+          ) : (
+            title
           )}
-        >
-          {title}
-        </span>
-        {subtitle && <span className="mt-0.5 block truncate text-[13px] text-label-2">{subtitle}</span>}
-      </span>
-      {detail != null && <span className="shrink-0 text-[15px] text-label-2">{detail}</span>}
-      {chevron && <ChevronRight className="-mr-1 size-[18px] shrink-0 text-label-3" strokeWidth={2.5} />}
-    </>
+          {subtitle != null &&
+            (typeof subtitle === "string" ? (
+              <Text variant="subhead" color="label2" numberOfLines={1} style={{ marginTop: 1 }}>
+                {subtitle}
+              </Text>
+            ) : (
+              subtitle
+            ))}
+        </View>
+        {detail != null &&
+          (typeof detail === "string" || typeof detail === "number" ? (
+            <Text color="label2" numberOfLines={1} style={styles.rowDetail}>
+              {detail}
+            </Text>
+          ) : (
+            detail
+          ))}
+        {trailing}
+        {chevron && <Icon name="chevronRight" size={14} color={theme.label3} weight="semibold" />}
+      </View>
+      {!last && <Separator inset={inset ?? (leading ? 62 : 16)} theme={theme} />}
+    </View>
   );
 
   if (href) {
-    return external ? (
-      <a href={href} target="_blank" rel="noreferrer" className={classes}>
-        {content}
-      </a>
-    ) : (
-      <Link href={href} className={classes}>
-        {content}
+    return (
+      <Link href={href} asChild>
+        <Pressable onPressIn={tap}>{({ pressed }) => content(pressed)}</Pressable>
       </Link>
     );
   }
-  if (onClick) {
+  if (onPress) {
     return (
-      <button type="button" onClick={onClick} className={classes}>
-        {content}
-      </button>
+      <Pressable
+        onPress={() => {
+          tap();
+          onPress();
+        }}
+        accessibilityRole="button"
+      >
+        {({ pressed }) => content(pressed)}
+      </Pressable>
     );
   }
-  return <div className={classes}>{content}</div>;
+  return content(false);
 }
 
-/** Ícone colorido de linha de ajustes. */
-export function RowIcon({ color, children }: { color: string; children: ReactNode }) {
+/** Ícone de linha em tom único (champagne sobre fundo suave), sem as cores de sistema. */
+export function RowIcon({ name, tone = "default" }: { name: IconName; tone?: "default" | "destructive" }) {
+  const theme = useTheme();
+  const color = tone === "destructive" ? theme.red : theme.accent;
   return (
-    <span className="flex size-[30px] shrink-0 items-center justify-center rounded-[8px] text-white" style={{ background: color }}>
-      {children}
-    </span>
+    <View style={[styles.rowIcon, { backgroundColor: tone === "destructive" ? withAlpha(theme.red, 0.1) : theme.accentTint }]}>
+      <Icon name={name} size={17} color={color} />
+    </View>
   );
 }
 
-/* ---------- Formulários em linhas ---------- */
+/* ---------- Formulários ---------- */
 
-/** Linha de formulário: rótulo à esquerda, controle à direita. */
-export function FormRow({ label, children, stacked }: { label: string; children: ReactNode; stacked?: boolean }) {
+export function FormRow({
+  label,
+  last,
+  children,
+  stacked,
+}: {
+  label: string;
+  last?: boolean;
+  children: ReactNode;
+  stacked?: boolean;
+}) {
+  const theme = useTheme();
   return (
-    <label
-      className={clsx(
-        rowBase,
-        "after:left-4 focus-within:bg-fill-2",
-        stacked && "flex-col !items-stretch gap-1",
-      )}
-    >
-      <span className={clsx("shrink-0 text-[16px] md:text-[15px]", stacked ? "text-[13px] text-label-2 md:text-[13px]" : "w-36")}>
-        {label}
-      </span>
-      <span className="flex min-w-0 flex-1 justify-end">{children}</span>
-    </label>
+    <View>
+      <View style={[styles.row, stacked && { flexDirection: "column", alignItems: "stretch", gap: 4 }]}>
+        <Text variant={stacked ? "footnote" : "body"} color={stacked ? "label2" : "label"} style={!stacked && styles.formLabel}>
+          {label}
+        </Text>
+        <View style={{ flex: stacked ? undefined : 1, alignItems: stacked ? "stretch" : "flex-end" }}>{children}</View>
+      </View>
+      {!last && <Separator inset={16} theme={theme} />}
+    </View>
   );
 }
 
-// 16px no celular evita o zoom automático do iOS ao focar o campo.
-const rowControl =
-  "w-full min-w-0 bg-transparent text-right text-[16px] text-label outline-none placeholder:text-label-3 md:text-[15px]";
-
-export function RowInput({ className, ...props }: ComponentProps<"input">) {
-  return <input className={clsx(rowControl, className)} {...props} />;
-}
-
-export function RowSelect({ className, children, ...props }: ComponentProps<"select">) {
+export function Input({ style, multiline, ...props }: ComponentProps<typeof TextInput>) {
+  const theme = useTheme();
   return (
-    <span className="relative flex w-full justify-end">
-      <select className={clsx(rowControl, "cursor-pointer appearance-none pr-5 [text-align-last:right]", className)} {...props}>
-        {children}
-      </select>
-      <ChevronsUpDown className="pointer-events-none absolute top-1/2 right-0 size-3.5 -translate-y-1/2 text-label-3" />
-    </span>
-  );
-}
-
-/** Área de texto que ocupa a linha inteira. */
-export function TextAreaRow({ className, ...props }: ComponentProps<"textarea">) {
-  return (
-    <div className="relative px-4 py-3 after:absolute after:right-0 after:bottom-0 after:left-4 after:h-px after:bg-separator last:after:hidden">
-      <textarea
-        className={clsx(
-          "block min-h-24 w-full resize-none bg-transparent text-[16px] outline-none placeholder:text-label-3 md:text-[15px]",
-          className,
-        )}
-        {...props}
-      />
-    </div>
-  );
-}
-
-/** Campo solto (fora de lista), preenchido com cinza como no iOS. */
-export function Input({ className, ...props }: ComponentProps<"input">) {
-  return (
-    <input
-      className={clsx(
-        "h-11 w-full rounded-xl bg-fill px-3.5 text-[16px] outline-none placeholder:text-label-3 focus:ring-2 focus:ring-accent/40 md:text-[15px]",
-        className,
-      )}
+    <TextInput
+      placeholderTextColor={theme.label3}
+      selectionColor={theme.accent}
+      multiline={multiline}
+      style={[
+        Type.body,
+        styles.input,
+        { color: theme.label, fontFamily, textAlign: multiline ? "left" : "right" },
+        Platform.OS === "web" && styles.webNoOutline,
+        style,
+      ]}
       {...props}
     />
   );
 }
 
-export function Switch({
-  className,
-  ...props
-}: Omit<ComponentProps<"input">, "type"> & { className?: string }) {
+/** Área de texto ocupando a linha toda. */
+export function TextAreaRow({ last, ...props }: ComponentProps<typeof TextInput> & { last?: boolean }) {
+  const theme = useTheme();
   return (
-    <span className={clsx("relative inline-flex shrink-0", className)}>
-      <input type="checkbox" role="switch" className="peer sr-only" {...props} />
-      <span className="h-[31px] w-[51px] rounded-full bg-fill transition-colors duration-200 peer-checked:bg-green-bright peer-focus-visible:ring-2 peer-focus-visible:ring-accent/50 peer-disabled:opacity-50" />
-      <span className="pointer-events-none absolute top-[2px] left-[2px] size-[27px] rounded-full bg-white shadow-[0_3px_8px_rgb(0_0_0/0.15),0_3px_1px_rgb(0_0_0/0.06)] transition-transform duration-200 peer-checked:translate-x-5" />
-    </span>
+    <View>
+      <View style={{ paddingHorizontal: 16, paddingVertical: 10 }}>
+        <Input multiline textAlignVertical="top" style={{ minHeight: 88 }} {...props} />
+      </View>
+      {!last && <Separator inset={16} theme={theme} />}
+    </View>
   );
 }
 
-/** Linha com texto e switch; tocar na linha liga/desliga. */
-export function SwitchRow({ label, subtitle, ...props }: Omit<ComponentProps<"input">, "type"> & { label: string; subtitle?: string }) {
+export function Switch(props: ComponentProps<typeof RNSwitch>) {
+  const theme = useTheme();
   return (
-    <label className={clsx(rowBase, "cursor-pointer after:left-4")}>
-      <span className="min-w-0 flex-1">
-        <span className="block text-[16px] md:text-[15px]">{label}</span>
-        {subtitle && <span className="mt-0.5 block text-[13px] text-label-2">{subtitle}</span>}
-      </span>
-      <Switch {...props} />
-    </label>
+    <RNSwitch
+      trackColor={{ true: theme.champagne, false: theme.fill }}
+      thumbColor="#FFFFFF"
+      // Web: sem isto a bolinha ligada fica na cor padrão (verde-azulado).
+      {...(Platform.OS === "web" ? { activeThumbColor: "#FFFFFF" } : null)}
+      ios_backgroundColor={theme.fill}
+      {...props}
+    />
   );
 }
 
-/** Controle segmentado que funciona dentro de formulários (rádios). */
-export function Segmented({
-  name,
-  options,
-  defaultValue,
+export function SwitchRow({
+  label,
+  subtitle,
+  value,
+  onValueChange,
+  last,
 }: {
-  name: string;
-  options: { value: string; label: string }[];
-  defaultValue?: string;
+  label: string;
+  subtitle?: string;
+  value: boolean;
+  onValueChange: (v: boolean) => void;
+  last?: boolean;
 }) {
   return (
-    <div role="radiogroup" className="grid auto-cols-fr grid-flow-col rounded-[9px] bg-fill p-0.5">
-      {options.map((o) => (
-        <label
-          key={o.value}
-          className="flex h-8 cursor-pointer items-center justify-center rounded-[7px] px-2 text-center text-[13px] font-medium transition has-[:checked]:bg-segment has-[:checked]:font-semibold has-[:checked]:shadow-[0_3px_8px_rgb(0_0_0/0.12),0_3px_1px_rgb(0_0_0/0.04)] has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent/50"
-        >
-          <input type="radio" className="sr-only" name={name} value={o.value} defaultChecked={o.value === defaultValue} />
-          {o.label}
-        </label>
-      ))}
-    </div>
+    <Row
+      title={label}
+      subtitle={subtitle}
+      last={last}
+      trailing={<Switch value={value} onValueChange={onValueChange} accessibilityLabel={label} />}
+    />
+  );
+}
+
+/* ---------- Botões ---------- */
+
+export function Button({
+  title,
+  onPress,
+  variant = "filled",
+  loading,
+  disabled,
+  icon,
+  style,
+}: {
+  title: string;
+  onPress: () => void;
+  variant?: "filled" | "tinted" | "plain" | "destructive";
+  loading?: boolean;
+  disabled?: boolean;
+  icon?: IconName;
+  style?: StyleProp<ViewStyle>;
+}) {
+  const theme = useTheme();
+  const bg =
+    variant === "filled"
+      ? theme.accentStrong
+      : variant === "tinted"
+        ? theme.accentTint
+        : variant === "destructive"
+          ? withAlpha(theme.red, 0.1)
+          : "transparent";
+  const fg = variant === "filled" ? theme.onAccent : variant === "destructive" ? theme.red : theme.accent;
+  return (
+    <Pressable
+      accessibilityRole="button"
+      disabled={disabled || loading}
+      onPress={() => {
+        tap();
+        onPress();
+      }}
+      style={({ pressed }) => [
+        styles.button,
+        { backgroundColor: bg, opacity: disabled ? 0.4 : pressed ? 0.75 : 1 },
+        variant === "plain" && { paddingHorizontal: 0, height: undefined },
+        style,
+      ]}
+    >
+      {loading ? (
+        <ActivityIndicator color={fg} />
+      ) : (
+        <>
+          {icon && <Icon name={icon} size={18} color={fg} />}
+          <RNText style={[Type.headline, { color: fg, fontFamily, fontWeight: "500", letterSpacing: 0.3 }]}>{title}</RNText>
+        </>
+      )}
+    </Pressable>
+  );
+}
+
+/** Botão de barra de navegação (ícone ou texto). */
+export function HeaderButton({
+  icon,
+  title,
+  onPress,
+  accessibilityLabel,
+  bold,
+}: {
+  icon?: IconName;
+  title?: string;
+  onPress: () => void;
+  accessibilityLabel?: string;
+  bold?: boolean;
+}) {
+  const theme = useTheme();
+  return (
+    <Pressable
+      onPress={() => {
+        tap();
+        onPress();
+      }}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel ?? title}
+      hitSlop={10}
+      style={({ pressed }) => [styles.headerButton, { opacity: pressed ? 0.5 : 1 }]}
+    >
+      {icon ? (
+        <Icon name={icon} size={22} color={theme.accent} weight="medium" />
+      ) : (
+        <RNText style={[Type.body, { color: theme.accent, fontWeight: bold ? "600" : "400", fontFamily }]}>{title}</RNText>
+      )}
+    </Pressable>
   );
 }
 
@@ -290,54 +433,114 @@ export function Avatar({ name, size = 40 }: { name: string; size?: number }) {
     .slice(0, 2)
     .map((p) => p[0]?.toUpperCase() ?? "")
     .join("");
+  const theme = useTheme();
   return (
-    <span
-      className="flex shrink-0 items-center justify-center rounded-full bg-gradient-to-b from-[#a8adb9] to-[#868a96] font-semibold text-white"
-      style={{ width: size, height: size, fontSize: size * 0.4 }}
-      aria-hidden
-    >
-      {initials || "?"}
-    </span>
+    <View style={[styles.avatar, { width: size, height: size, borderRadius: size / 2, backgroundColor: theme.accentTint }]}>
+      <RNText style={{ color: theme.accent, fontSize: size * 0.42, fontFamily: Serif.semibold }}>{initials || "?"}</RNText>
+    </View>
   );
 }
 
-export function Alert({ tone = "error", children }: { tone?: "error" | "success" | "info"; children: ReactNode }) {
+export function Banner({ tone = "error", children }: { tone?: "error" | "info" | "success"; children: ReactNode }) {
+  const theme = useTheme();
+  const color = tone === "error" ? theme.red : tone === "success" ? theme.green : theme.accent;
   return (
-    <p
-      role={tone === "error" ? "alert" : "status"}
-      className={clsx(
-        "rounded-xl px-3.5 py-2.5 text-[13px] leading-snug",
-        tone === "error" && "bg-red/10 text-red",
-        tone === "success" && "bg-green/10 text-green",
-        tone === "info" && "bg-blue/10 text-blue",
+    <View style={[styles.banner, { backgroundColor: withAlpha(tone === "info" ? theme.champagne : color, 0.12) }]}>
+      <RNText style={[Type.footnote, { color, fontFamily }]}>{children}</RNText>
+    </View>
+  );
+}
+
+export function EmptyState({ icon, title, message }: { icon?: IconName; title: string; message?: string }) {
+  const theme = useTheme();
+  return (
+    <View style={styles.empty}>
+      {icon && <Icon name={icon} size={44} color={theme.label3} />}
+      <Text variant="headline" style={{ marginTop: 12, textAlign: "center" }}>
+        {title}
+      </Text>
+      {message && (
+        <Text variant="subhead" color="label2" style={{ marginTop: 4, textAlign: "center", maxWidth: 300 }}>
+          {message}
+        </Text>
       )}
-    >
-      {children}
-    </p>
+    </View>
   );
 }
 
-export function EmptyState({ icon, title, children }: { icon?: ReactNode; title: string; children?: ReactNode }) {
+export function Loading() {
   return (
-    <div className="flex flex-col items-center px-6 py-14 text-center">
-      {icon && <div className="mb-3 text-label-3">{icon}</div>}
-      <p className="text-[17px] font-semibold">{title}</p>
-      {children && <p className="mt-1 max-w-xs text-[15px] text-label-2">{children}</p>}
-    </div>
+    <View style={styles.empty}>
+      <ActivityIndicator />
+    </View>
   );
 }
 
-/** Marca do app: quadrado arredondado com brilho. */
-export function AppMark({ size = 32, className }: { size?: number; className?: string }) {
+/** Monograma: iniciais em serifada champagne sobre grafite (ou as iniciais do estúdio). */
+export function AppMark({ size = 32, name }: { size?: number; name?: string }) {
+  const letters = name
+    ? name
+        .replace(/\b(studio|estúdio|espaço|nails?|unhas?|de|da|do)\b/gi, "")
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((w) => w[0].toUpperCase())
+        .join("") || name[0].toUpperCase()
+    : "A";
   return (
-    <span
-      className={clsx("flex shrink-0 items-center justify-center bg-gradient-to-br from-[#ff8fb5] via-[#e5396f] to-[#b8245a] text-white", className)}
-      style={{ width: size, height: size, borderRadius: size * 0.225 }}
-      aria-hidden
-    >
-      <svg width={size * 0.52} height={size * 0.52} viewBox="0 0 24 24" fill="currentColor">
-        <path d="M12 1.5c.5 4.9 2.6 8 7.5 9.3.6.2.6.9 0 1.1-4.9 1.3-7 4.4-7.5 9.3-.1.6-.9.6-1 0-.5-4.9-2.6-8-7.5-9.3-.6-.2-.6-.9 0-1.1 4.9-1.3 7-4.4 7.5-9.3.1-.6.9-.6 1 0Z" />
-      </svg>
-    </span>
+    <View style={[styles.appMark, { width: size, height: size, borderRadius: size * 0.225 }]}>
+      <RNText
+        style={{
+          color: "#D9C3A5",
+          fontFamily: Serif.medium,
+          fontSize: size * (letters.length > 1 ? 0.46 : 0.62),
+          lineHeight: size * 0.9,
+          letterSpacing: letters.length > 1 ? 0.5 : 0,
+          includeFontPadding: false,
+          textAlign: "center",
+        }}
+      >
+        {letters}
+      </RNText>
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  screenContent: {
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 40,
+    width: "100%",
+    maxWidth: 1120,
+    alignSelf: "center",
+  },
+  section: { marginBottom: 28 },
+  sectionHeader: { paddingHorizontal: 16, paddingBottom: 6 },
+  sectionFooter: { paddingHorizontal: 16, paddingTop: 6 },
+  sectionBody: { borderRadius: 12, overflow: "hidden", borderCurve: "continuous" },
+  row: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 44, paddingHorizontal: 16, paddingVertical: 10 },
+  rowText: { flex: 1, minWidth: 0 },
+  rowDetail: { maxWidth: "55%", textAlign: "right" },
+  rowIcon: { width: 30, height: 30, borderRadius: 7, alignItems: "center", justifyContent: "center", borderCurve: "continuous" },
+  formLabel: { width: 120 },
+  input: { paddingVertical: 0, flexGrow: 1, alignSelf: "stretch", minHeight: 24 },
+  webNoOutline: { outlineWidth: 0 },
+  button: {
+    height: 50,
+    borderRadius: 14,
+    borderCurve: "continuous",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingHorizontal: 20,
+  },
+  headerButton: { paddingHorizontal: 4, minWidth: 28, minHeight: 28, alignItems: "center", justifyContent: "center" },
+  avatar: { alignItems: "center", justifyContent: "center" },
+  banner: { borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, marginBottom: 16, borderCurve: "continuous" },
+  empty: { alignItems: "center", justifyContent: "center", paddingVertical: 56, paddingHorizontal: 24 },
+  // Grafite fixo (também no modo escuro): é a marca, não um elemento do tema.
+  appMark: { backgroundColor: "#2B2724", alignItems: "center", justifyContent: "center", borderCurve: "continuous" },
+});

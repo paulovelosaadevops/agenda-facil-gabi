@@ -1,0 +1,12 @@
+{
+  // Código compartilhado entre o app (Metro), as Edge Functions (Deno) e os testes (Vitest).
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "skipLibCheck": true
+  }
+}

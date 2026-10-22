@@ -1,43 +1,49 @@
-"use client";
+import * as Clipboard from "expo-clipboard";
+import { useState } from "react";
+import { Platform, Share, View } from "react-native";
+import { Button, Text } from "./ui";
 
-import { Check, Copy, Share } from "lucide-react";
-import { useState, useSyncExternalStore } from "react";
-import { buttonClass } from "./ui";
+/** URL pública da página de agendamento. */
+/** Link que a Gabi compartilha: cadastro/login da cliente e agendamento. */
+export function publicBookingUrl(): string {
+  const base =
+    process.env.EXPO_PUBLIC_APP_URL ??
+    (Platform.OS === "web" && typeof window !== "undefined" ? window.location.origin : "https://agenda-facil.expo.app");
+  return `${base.replace(/\/$/, "")}/agendar`;
+}
 
-/** Copiar e compartilhar (folha de compartilhamento nativa do celular, quando existir). */
+/** Mostra o link com botões de copiar e compartilhar (folha nativa do sistema). */
 export function ShareLink({ url, title }: { url: string; title: string }) {
   const [copied, setCopied] = useState(false);
-  // Só existe no navegador (e não em todos): false no servidor, valor real após hidratar.
-  const canShare = useSyncExternalStore(
-    () => () => {},
-    () => "share" in navigator,
-    () => false,
-  );
+  const canShare = Platform.OS !== "web" || (typeof navigator !== "undefined" && "share" in navigator);
 
   return (
-    <div className="flex gap-2">
-      <button
-        type="button"
-        className={buttonClass("tinted", "sm")}
-        onClick={async () => {
-          await navigator.clipboard.writeText(url);
-          setCopied(true);
-          setTimeout(() => setCopied(false), 1600);
-        }}
-      >
-        {copied ? <Check className="size-3.5" strokeWidth={3} /> : <Copy className="size-3.5" />}
-        {copied ? "Copiado" : "Copiar"}
-      </button>
-      {canShare && (
-        <button
-          type="button"
-          className={buttonClass("tinted", "sm")}
-          onClick={() => navigator.share({ title, url }).catch(() => {})}
-        >
-          <Share className="size-3.5" />
-          Compartilhar
-        </button>
-      )}
-    </div>
+    <View style={{ padding: 16, gap: 12 }}>
+      <Text variant="subhead" color="label2" numberOfLines={1}>
+        {url.replace(/^https?:\/\//, "")}
+      </Text>
+      <View style={{ flexDirection: "row", gap: 8 }}>
+        <Button
+          title={copied ? "Copiado" : "Copiar"}
+          icon={copied ? "check" : "copy"}
+          variant="tinted"
+          style={{ height: 36, borderRadius: 18, paddingHorizontal: 14 }}
+          onPress={async () => {
+            await Clipboard.setStringAsync(url);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1600);
+          }}
+        />
+        {canShare && (
+          <Button
+            title="Compartilhar"
+            icon="share"
+            variant="tinted"
+            style={{ height: 36, borderRadius: 18, paddingHorizontal: 14 }}
+            onPress={() => Share.share(Platform.OS === "ios" ? { url, message: title } : { message: `${title}: ${url}`, title })}
+          />
+        )}
+      </View>
+    </View>
   );
 }

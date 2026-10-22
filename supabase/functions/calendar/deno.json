@@ -1,0 +1,11 @@
+{
+  "imports": {
+    "@supabase/supabase-js": "npm:@supabase/supabase-js@2.118.0",
+    "date-fns": "npm:date-fns@4.4.0",
+    "date-fns/": "npm:/date-fns@4.4.0/",
+    "@date-fns/tz": "npm:@date-fns/tz@1.5.0",
+    "zod": "npm:zod@4.6.7",
+    "@anthropic-ai/sdk": "npm:@anthropic-ai/sdk@0.135.0",
+    "@anthropic-ai/sdk/": "npm:/@anthropic-ai/sdk@0.135.0/"
+  }
+}
