@@ -85,16 +85,61 @@ export async function loadStudio(db: SupabaseClient, slug?: string): Promise<Bus
   return data;
 }
 
-/** Valida o JWT de uma cliente e devolve a ficha dela. */
-export async function requireClient(req: Request): Promise<{ db: SupabaseClient; user: User; client: Client; business: Business }> {
+export interface ClientProfile {
+  name: string;
+  phone: string;
+  whatsapp: boolean;
+  instagram: string;
+}
+
+/**
+ * Conta de login sem ficha de cliente (ex.: a ficha foi apagada, mas a conta continuou): recria a ficha com
+ * os dados enviados no agendamento, ligando a uma ficha do mesmo telefone que a Gabi já tenha cadastrado.
+ */
+async function createClientFor(db: SupabaseClient, user: User, profile: ClientProfile): Promise<Client> {
+  const business = await loadStudio(db);
+  const { data: byPhone } = await db
+    .from("clients")
+    .select("*")
+    .eq("business_id", business.id)
+    .eq("phone", profile.phone)
+    .maybeSingle<Client>();
+  if (byPhone?.user_id && byPhone.user_id !== user.id) {
+    throw new HttpError(409, "Este telefone já está ligado a outra conta. Use o e-mail dessa conta ou fale com a Gabi.");
+  }
+  const { data, error } = byPhone
+    ? await db
+        .from("clients")
+        .update({ user_id: user.id, whatsapp: profile.whatsapp, instagram: byPhone.instagram || profile.instagram, email: byPhone.email ?? user.email })
+        .eq("id", byPhone.id)
+        .select("*")
+        .single<Client>()
+    : await db
+        .from("clients")
+        .insert({ business_id: business.id, user_id: user.id, ...profile, email: user.email })
+        .select("*")
+        .single<Client>();
+  if (error || !data) throw new HttpError(500, "Não foi possível criar sua ficha. Tente de novo.");
+  return data;
+}
+
+/**
+ * Valida o JWT de uma cliente e devolve a ficha dela. Com `profile` (dados do agendamento pelo link),
+ * uma conta sem ficha ganha a ficha na hora em vez de dar erro.
+ */
+export async function requireClient(
+  req: Request,
+  profile?: ClientProfile,
+): Promise<{ db: SupabaseClient; user: User; client: Client; business: Business }> {
   const token = req.headers.get("Authorization")?.replace(/^Bearer\s+/i, "");
   const db = adminClient();
   // Sem login, o supabase-js envia a chave pública como token: não é um usuário.
   const { data } = token ? await db.auth.getUser(token) : { data: { user: null } };
   if (!data.user) throw new HttpError(401, "Entre na sua conta para agendar.");
 
-  const { data: client } = await db.from("clients").select("*").eq("user_id", data.user.id).maybeSingle<Client>();
-  if (!client) throw new HttpError(403, "Conta de cliente não encontrada.");
+  let { data: client } = await db.from("clients").select("*").eq("user_id", data.user.id).maybeSingle<Client>();
+  if (!client && profile) client = await createClientFor(db, data.user, profile);
+  if (!client) throw new HttpError(403, "Não encontramos seu cadastro. Volte e preencha seus dados para agendar.");
   const { data: business } = await db.from("businesses").select("*").eq("id", client.business_id).single<Business>();
   if (!business) throw new HttpError(404, "Estúdio não encontrado.");
   return { db, user: data.user, client, business };

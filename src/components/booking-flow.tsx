@@ -125,7 +125,20 @@ export function BookingFlow({
   const [now, setNow] = useState(() => Date.now());
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
+  // Link público: primeiro o e-mail. Quem já é cliente só confirma (código ou senha); quem é nova preenche os dados.
+  const [known, setKnown] = useState<"unknown" | "client" | "new">("unknown");
+  const [knownHasPassword, setKnownHasPassword] = useState(false);
+  const [usePassword, setUsePassword] = useState(false);
+  const [password, setPassword] = useState("");
   const setField = (key: keyof GuestProfile) => (v: string | boolean) => setProfile((p) => ({ ...p, [key]: v }));
+  const email = profile.email.trim().toLowerCase();
+
+  const changeEmail = () => {
+    setError(undefined);
+    setKnown("unknown");
+    setUsePassword(false);
+    setPassword("");
+  };
 
   const loadSlots = async (serviceId: string, date: string) => {
     setDay(date);
@@ -162,7 +175,26 @@ export function BookingFlow({
 
   const back = () => {
     setError(undefined);
+    if (step === "details" && known !== "unknown") return changeEmail();
     setStep(step === "code" ? "details" : step === "details" ? "time" : "service");
+  };
+
+  /** Confere se o e-mail já é de uma cliente e decide o que pedir em seguida. */
+  const lookupEmail = async () => {
+    setError(undefined);
+    if (!/^\S+@\S+\.\S+$/.test(email)) return setError("Informe um e-mail válido.");
+    setBusy(true);
+    try {
+      const res = await callFunction<{ exists: boolean; hasPassword: boolean }>("public-booking", { action: "lookup", email });
+      saveProfile({ ...profile, email });
+      setKnown(res.exists ? "client" : "new");
+      setKnownHasPassword(res.hasPassword);
+      setUsePassword(res.hasPassword);
+    } catch {
+      setError("Não foi possível continuar. Confira sua internet e tente de novo.");
+    } finally {
+      setBusy(false);
+    }
   };
 
   const validateProfile = (): string | undefined => {
@@ -174,7 +206,18 @@ export function BookingFlow({
 
   const book = async () => {
     if (!service || !slot) return;
-    const res = await callFunction<{ calendarUrl?: string }>("public-booking", { action: "book", serviceId: service.id, startsAt: slot, notes });
+    // Cliente nova manda os dados: se a conta já existia sem ficha, a ficha é criada na hora.
+    const newProfile =
+      guest && known === "new"
+        ? { name: profile.name.trim(), phone: profile.phone, whatsapp: profile.whatsapp, instagram: profile.instagram.trim().replace(/^@?/, "@") }
+        : undefined;
+    const res = await callFunction<{ calendarUrl?: string }>("public-booking", {
+      action: "book",
+      serviceId: service.id,
+      startsAt: slot,
+      notes,
+      profile: newProfile,
+    });
     setCalendarUrl(res.calendarUrl);
     setStep("done");
   };
@@ -205,21 +248,24 @@ export function BookingFlow({
   /** Link público: envia o código para o e-mail (cria a conta com os dados na primeira vez). */
   const sendCode = async () => {
     setError(undefined);
-    const invalid = validateProfile();
+    const invalid = known === "new" ? validateProfile() : undefined;
     if (invalid) return setError(invalid);
     setBusy(true);
     const { error: e } = await supabase.auth.signInWithOtp({
-      email: profile.email.trim().toLowerCase(),
-      options: {
-        shouldCreateUser: true,
-        data: {
-          role: "client",
-          name: profile.name.trim(),
-          phone: normalizePhone(profile.phone),
-          whatsapp: profile.whatsapp,
-          instagram: profile.instagram.trim().replace(/^@?/, "@"),
-        },
-      },
+      email,
+      options:
+        known === "new"
+          ? {
+              shouldCreateUser: true,
+              data: {
+                role: "client",
+                name: profile.name.trim(),
+                phone: normalizePhone(profile.phone),
+                whatsapp: profile.whatsapp,
+                instagram: profile.instagram.trim().replace(/^@?/, "@"),
+              },
+            }
+          : { shouldCreateUser: false },
     });
     setBusy(false);
     if (e) {
@@ -240,10 +286,30 @@ export function BookingFlow({
     if (!/^\d{6}$/.test(code.trim())) return setError("Digite os 6 números do código.");
     setBusy(true);
     onVerifyStart?.();
-    const { error: e } = await supabase.auth.verifyOtp({ email: profile.email.trim().toLowerCase(), token: code.trim(), type: "email" });
+    const { error: e } = await supabase.auth.verifyOtp({ email, token: code.trim(), type: "email" });
     if (e) {
       setBusy(false);
       return setError("Código inválido ou expirado. Confira o e-mail ou peça outro código.");
+    }
+    try {
+      await book();
+    } catch (err) {
+      handleBookingError(err);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /** Cliente com senha: entra e reserva, sem esperar código. */
+  const confirmPassword = async () => {
+    setError(undefined);
+    if (!password) return setError("Digite sua senha.");
+    setBusy(true);
+    onVerifyStart?.();
+    const { error: e } = await supabase.auth.signInWithPassword({ email, password });
+    if (e) {
+      setBusy(false);
+      return setError("Senha incorreta. Tente de novo ou receba um código por e-mail.");
     }
     try {
       await book();
@@ -487,7 +553,60 @@ export function BookingFlow({
           </View>
 
           {guest && (
-            <Section header="Dados para o agendamento" footer="Usamos seu telefone para confirmar o horário e enviar o lembrete.">
+            <Section
+              header="Seu e-mail"
+              footer={
+                known === "unknown"
+                  ? "Se você já agendou antes, não precisa preencher seus dados de novo."
+                  : known === "client"
+                    ? "Que bom te ver de novo! Seus dados já estão com a Gabi."
+                    : "Primeira vez por aqui: preencha seus dados abaixo."
+              }
+            >
+              {known === "unknown" ? (
+                <FormRow label="E-mail">
+                  <Input
+                    value={profile.email}
+                    onChangeText={setField("email")}
+                    placeholder="voce@email.com"
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    autoComplete="email"
+                    autoFocus={!profile.email}
+                    onSubmitEditing={lookupEmail}
+                    returnKeyType="next"
+                  />
+                </FormRow>
+              ) : (
+                <FormRow label="E-mail">
+                  <Text color="label2" numberOfLines={1} style={{ flex: 1 }}>
+                    {email}
+                  </Text>
+                  <Pressable hitSlop={8} onPress={changeEmail} accessibilityRole="button">
+                    <Text color="accent" style={{ fontWeight: "500" }}>
+                      Trocar
+                    </Text>
+                  </Pressable>
+                </FormRow>
+              )}
+              {known === "client" && usePassword && (
+                <FormRow label="Senha">
+                  <Input
+                    value={password}
+                    onChangeText={setPassword}
+                    placeholder="Sua senha"
+                    secureTextEntry
+                    autoComplete="current-password"
+                    textContentType="password"
+                    autoFocus
+                    onSubmitEditing={confirmPassword}
+                  />
+                </FormRow>
+              )}
+            </Section>
+          )}
+          {guest && known === "new" && (
+            <Section header="Seus dados" footer="Usamos seu telefone para confirmar o horário e enviar o lembrete.">
               <FormRow label="Nome">
                 <Input value={profile.name} onChangeText={setField("name")} placeholder="Nome e sobrenome" textContentType="name" autoComplete="name" />
               </FormRow>
@@ -498,25 +617,35 @@ export function BookingFlow({
               <FormRow label="Instagram">
                 <Input value={profile.instagram} onChangeText={setField("instagram")} placeholder="@seuperfil" autoCapitalize="none" autoCorrect={false} />
               </FormRow>
-              <FormRow label="E-mail">
-                <Input
-                  value={profile.email}
-                  onChangeText={setField("email")}
-                  placeholder="voce@email.com"
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                  autoComplete="email"
-                />
-              </FormRow>
             </Section>
           )}
-          <Section header="Observações">
-            <TextAreaRow value={notes} onChangeText={setNotes} placeholder="Ideia de cor, referência, alguma alergia... (opcional)" />
-          </Section>
+          {(!guest || known !== "unknown") && (
+            <Section header="Observações">
+              <TextAreaRow value={notes} onChangeText={setNotes} placeholder="Ideia de cor, referência, alguma alergia... (opcional)" />
+            </Section>
+          )}
           {error && <Banner>{error}</Banner>}
-          {guest ? (
+          {guest && known === "unknown" ? (
+            <Button title="Continuar" onPress={lookupEmail} loading={busy} disabled={!email} />
+          ) : guest && known === "client" && usePassword ? (
+            <>
+              <Button title="Entrar e agendar" onPress={confirmPassword} loading={busy} disabled={!password} />
+              <Pressable hitSlop={8} onPress={() => setUsePassword(false)} style={{ alignSelf: "center", marginTop: 14 }}>
+                <Text variant="subhead" color="accent">
+                  Esqueci a senha · receber código por e-mail
+                </Text>
+              </Pressable>
+            </>
+          ) : guest ? (
             <>
               <Button title="Enviar código por e-mail" icon="message" onPress={sendCode} loading={busy} />
+              {known === "client" && knownHasPassword && (
+                <Pressable hitSlop={8} onPress={() => setUsePassword(true)} style={{ alignSelf: "center", marginTop: 14 }}>
+                  <Text variant="subhead" color="accent">
+                    Entrar com senha
+                  </Text>
+                </Pressable>
+              )}
               <Text variant="footnote" color="label2" style={{ textAlign: "center", marginTop: 10 }}>
                 Para sua segurança, o horário só é reservado depois que você confirmar o código.
               </Text>
@@ -549,7 +678,13 @@ export function BookingFlow({
           {error && <Banner>{error}</Banner>}
           <Button title="Confirmar agendamento" onPress={confirmCode} loading={busy} disabled={code.length < 6} />
           <View style={styles.codeLinks}>
-            <Pressable hitSlop={8} onPress={back}>
+            <Pressable
+              hitSlop={8}
+              onPress={() => {
+                changeEmail();
+                setStep("details");
+              }}
+            >
               <Text variant="subhead" color="accent">
                 Trocar e-mail
               </Text>

@@ -3,7 +3,7 @@
 import { z } from "zod";
 import { BookingError, createBooking, getAvailableSlots } from "../_shared/booking.ts";
 import { calendarUrl } from "../_shared/calendar.ts";
-import { formatInTz } from "../_shared/format.ts";
+import { formatInTz, normalizePhone } from "../_shared/format.ts";
 import { adminClient, handler, HttpError, json, loadStudio, readJson, requireClient } from "../_shared/http.ts";
 
 const Request = z.discriminatedUnion("action", [
@@ -19,7 +19,18 @@ const Request = z.discriminatedUnion("action", [
     serviceId: z.string().uuid(),
     startsAt: z.string().datetime(),
     notes: z.string().trim().max(500).default(""),
+    // Dados de quem é nova (ou ficou sem ficha): criam a ficha se ainda não existir.
+    profile: z
+      .object({
+        name: z.string().trim().min(3).max(120),
+        phone: z.string().trim().min(8).max(20),
+        whatsapp: z.boolean(),
+        instagram: z.string().trim().min(2).max(60),
+      })
+      .optional(),
   }),
+  // O e-mail já é de uma cliente com conta? Decide se o link pede só o código ou também os dados.
+  z.object({ action: z.literal("lookup"), email: z.string().trim().toLowerCase().email() }),
   z.object({ action: z.literal("my-calendar"), appointmentId: z.string().uuid() }),
 ]);
 
@@ -43,8 +54,24 @@ Deno.serve(
         return json({ url: await calendarUrl(appt.id, "cliente") });
       }
 
+      if (input.action === "lookup") {
+        // Só responde se existe e se tem senha: nenhum dado da cliente sai daqui.
+        const db = adminClient();
+        const { data: client } = await db
+          .from("clients")
+          .select("user_id")
+          .eq("email", input.email)
+          .not("user_id", "is", null)
+          .limit(1)
+          .maybeSingle();
+        if (!client) return json({ exists: false, hasPassword: false });
+        const { data } = await db.auth.admin.getUserById(client.user_id);
+        return json({ exists: true, hasPassword: Boolean(data.user?.user_metadata?.has_password) });
+      }
+
       if (input.action === "book") {
-        const { db, client, business } = await requireClient(req);
+        const profile = input.profile && { ...input.profile, phone: normalizePhone(input.profile.phone) ?? input.profile.phone };
+        const { db, client, business } = await requireClient(req, profile);
         const startsAt = new Date(input.startsAt);
         const { calendar } = await createBooking(db, {
           business,
