@@ -1,7 +1,7 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
 import { useWindowDimensions, View } from "react-native";
-import { ClientPicker } from "@/components/client-picker";
+import { ClientPicker, NEW_CLIENT } from "@/components/client-picker";
 import { DateField } from "@/components/date-calendar";
 import { GroupedPickerRow } from "@/components/grouped-picker";
 import { ScreenHeader } from "@/components/screen-header";
@@ -42,22 +42,19 @@ export default function NewAppointment() {
   // No computador: cliente e serviço à esquerda, data e horário à direita.
   const wide = useWindowDimensions().width >= 900;
   const params = useLocalSearchParams<{ data?: string; cliente?: string; servico?: string }>();
-  const [query, setQuery] = useState("");
-  const [client, setClient] = useState<ClientOption>();
+  // Id da cliente escolhida no dropdown, NEW_CLIENT para cadastrar na hora, ou "" (nenhuma).
+  // Veio da ficha da cliente (?cliente=): já começa com ela selecionada.
+  const [clientChoice, setClientChoice] = useState(params.cliente ?? "");
+  const [newName, setNewName] = useState("");
 
   const { data } = useQuery(async () => {
     const [clients, services] = await Promise.all([
       supabase.from("clients").select("id, name, phone").eq("business_id", business.id).order("name").returns<ClientOption[]>(),
       supabase.from("services").select("*").eq("business_id", business.id).eq("active", true).order("name").returns<Service[]>(),
     ]);
-    const preset = clients.data?.find((c) => c.id === params.cliente);
-    if (preset) {
-      // Veio da ficha da cliente: já deixa selecionada.
-      setClient(preset);
-      setQuery(preset.name);
-    }
     return { clients: clients.data ?? [], services: services.data ?? [] };
   });
+  const client = data?.clients.find((c) => c.id === clientChoice);
 
   const today = toDateKey(new Date(), tz);
   const [phone, setPhone] = useState("");
@@ -72,7 +69,7 @@ export default function NewAppointment() {
   const [error, setError] = useState<string>();
   const [saving, setSaving] = useState(false);
   const slots = useSlotSuggestions(business, serviceId, date);
-  const isNewClient = !client && query.trim().length > 0;
+  const isNewClient = clientChoice === NEW_CLIENT;
 
   const services = data?.services ?? [];
   const service = services.find((s) => s.id === serviceId);
@@ -82,12 +79,13 @@ export default function NewAppointment() {
     options: services.filter((s) => (s.category ?? "outros") === c.key).map((s) => ({ label: s.name, detail: serviceMeta(s), value: s.id })),
   })).filter((g) => g.options.length);
   const dateLabel = capitalize(formatInTz(dayBounds(date, tz).start, "EEEE, d 'de' MMMM", tz));
-  const clientName = client?.name ?? query.trim();
+  const clientName = client?.name ?? (isNewClient ? newName.trim() : "");
 
   const save = async () => {
     setError(undefined);
-    if (!client && query.trim().length < 2) return setError("Escolha ou digite o nome da cliente.");
-    if (!client && (!phone.trim() || instagram.trim().length < 2 || !/^\S+@\S+\.\S+$/.test(email.trim()))) {
+    if (!client && !isNewClient) return setError("Escolha a cliente.");
+    if (isNewClient && newName.trim().length < 2) return setError("Cliente nova: informe o nome.");
+    if (isNewClient && (!phone.trim() || instagram.trim().length < 2 || !/^\S+@\S+\.\S+$/.test(email.trim()))) {
       return setError("Cliente nova: preencha telefone, Instagram e e-mail.");
     }
     if (!serviceId) return setError("Escolha um serviço.");
@@ -99,7 +97,7 @@ export default function NewAppointment() {
         clientId: client?.id,
         newClient: client
           ? undefined
-          : { name: query.trim(), phone, whatsapp, instagram: instagram.trim().replace(/^@?/, "@"), email: email.trim().toLowerCase() },
+          : { name: newName.trim(), phone, whatsapp, instagram: instagram.trim().replace(/^@?/, "@"), email: email.trim().toLowerCase() },
         serviceId,
         date,
         time,
@@ -117,7 +115,12 @@ export default function NewAppointment() {
   const who = (
     <>
       <Section header="Cliente" footer={isNewClient ? "Cliente nova: todos os dados são obrigatórios." : undefined}>
-        <ClientPicker clients={data?.clients ?? []} query={query} onQueryChange={setQuery} selected={client} onSelect={setClient} />
+        <ClientPicker clients={data?.clients ?? []} value={clientChoice} onChange={setClientChoice} />
+        {isNewClient && (
+          <FormRow label="Nome">
+            <Input value={newName} onChangeText={setNewName} placeholder="Nome e sobrenome" autoFocus />
+          </FormRow>
+        )}
         {isNewClient && (
           <FormRow label="Telefone">
             <Input value={phone} onChangeText={setPhone} placeholder="(11) 99999-8888" keyboardType="phone-pad" />

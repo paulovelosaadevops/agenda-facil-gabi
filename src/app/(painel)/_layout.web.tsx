@@ -73,7 +73,9 @@ export default function PanelTabsWeb() {
           </View>
         )}
         {TABS.map((t) => (
-          <TabTrigger key={t.name} name={t.name} href={t.href} asChild>
+          // resetOnFocus: tocar na aba sempre abre a tela principal dela. Sem isso, um "Novo agendamento" aberto
+          // pelo Início e fechado pelo histórico do navegador ficava no topo da Agenda.
+          <TabTrigger key={t.name} name={t.name} href={t.href} resetOnFocus asChild>
             <TabButton label={t.label} icon={t.icon} sidebar={sidebar} />
           </TabTrigger>
         ))}

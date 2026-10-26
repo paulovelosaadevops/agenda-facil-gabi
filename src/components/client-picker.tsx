@@ -1,64 +1,30 @@
-import { useMemo } from "react";
 import type { Client } from "@shared/types.ts";
 import { formatPhone } from "@shared/format.ts";
-import { Avatar, FormRow, Input, Row } from "./ui";
+import { GroupedPickerRow, type PickerGroup } from "./grouped-picker";
 
 type ClientOption = Pick<Client, "id" | "name" | "phone">;
 
-const normalize = (s: string) =>
-  s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+/** Valor do dropdown para cadastrar uma cliente nova no próprio agendamento. */
+export const NEW_CLIENT = "__nova__";
+
+/** Inicial para agrupar (sem acento): "Ágata" → "A"; nomes que não começam com letra vão para "#". */
+const initial = (name: string) => {
+  const c = name.trim().normalize("NFD").charAt(0).toUpperCase();
+  return /[A-Z]/.test(c) ? c : "#";
+};
 
 /**
- * Campo "Cliente" com sugestões enquanto digita. Escolher uma sugestão seleciona a cliente;
- * se não houver, a pessoa digitada vira uma cliente nova (e o formulário pede o WhatsApp).
+ * Campo "Cliente" em dropdown: clientes em ordem alfabética, separadas pela inicial,
+ * e "+ Nova cliente" no topo para cadastrar na hora.
  */
-export function ClientPicker({
-  clients,
-  query,
-  onQueryChange,
-  selected,
-  onSelect,
-}: {
-  clients: ClientOption[];
-  query: string;
-  onQueryChange: (q: string) => void;
-  selected?: ClientOption;
-  onSelect: (c?: ClientOption) => void;
-}) {
-  const matches = useMemo(() => {
-    const q = normalize(query);
-    const digits = query.replace(/\D/g, "");
-    if (!q || selected) return [];
-    return clients
-      .filter((c) => normalize(c.name).includes(q) || (digits.length >= 3 && c.phone.includes(digits)))
-      .slice(0, 5);
-  }, [clients, query, selected]);
-
-  return (
-    <>
-      <FormRow label="Cliente" last={matches.length === 0}>
-        <Input
-          value={query}
-          placeholder="Nome ou telefone"
-          autoCorrect={false}
-          onChangeText={(v) => {
-            onQueryChange(v);
-            if (selected) onSelect(undefined);
-          }}
-        />
-      </FormRow>
-      {matches.map((c) => (
-        <Row
-          key={c.id}
-          leading={<Avatar name={c.name} size={30} />}
-          title={c.name}
-          subtitle={formatPhone(c.phone)}
-          onPress={() => {
-            onSelect(c);
-            onQueryChange(c.name);
-          }}
-        />
-      ))}
-    </>
-  );
+export function ClientPicker({ clients, value, onChange }: { clients: ClientOption[]; value: string; onChange: (value: string) => void }) {
+  const sorted = [...clients].sort((a, b) => a.name.localeCompare(b.name, "pt-BR", { sensitivity: "base" }));
+  const groups: PickerGroup<string>[] = [{ label: "Cadastrar", options: [{ label: "+ Nova cliente", value: NEW_CLIENT }] }];
+  for (const c of sorted) {
+    const letter = initial(c.name);
+    let group = groups[groups.length - 1];
+    if (group.label !== letter) groups.push((group = { label: letter, options: [] }));
+    group.options.push({ label: c.name, detail: formatPhone(c.phone), value: c.id });
+  }
+  return <GroupedPickerRow label="Cliente" value={value} groups={groups} onChange={onChange} />;
 }
