@@ -148,7 +148,8 @@ export async function createBooking(db: SupabaseClient, input: CreateBookingInpu
       service_id: service.id,
       starts_at: startsAt.toISOString(),
       ends_at: endsAt.toISOString(),
-      status: "confirmed",
+      // Fica pendente até a Gabi confirmar com a cliente (na véspera, pelo WhatsApp).
+      status: "pending",
       source: input.source,
       price_cents: service.price_cents,
       notes: input.notes ?? "",
@@ -173,14 +174,14 @@ export async function createBooking(db: SupabaseClient, input: CreateBookingInpu
     await notifyClient(db, business, client, {
       kind: "confirmation",
       whatsapp:
-        `Olá, ${first}. Seu horário de *${service.name}* com ${business.name} está confirmado para ${when}.` +
+        `Olá, ${first}. Seu horário de *${service.name}* com ${business.name} está reservado para ${when}.` +
         (business.address ? `\nEndereço: ${business.address}` : "") +
-        `\n\nSe precisar remarcar, é só responder esta mensagem.`,
+        `\n\nUm dia antes, vou te pedir a confirmação por aqui.`,
       email: {
-        subject: `Horário confirmado: ${service.name}, ${when}`,
-        preheader: `Te espero ${when}.`,
-        title: "Tudo certo!",
-        text: `Olá, ${first}! Seu horário está confirmado. Antes do atendimento você recebe um lembrete por e-mail.`,
+        subject: `Horário reservado: ${service.name}, ${when}`,
+        preheader: `Seu horário está reservado para ${when}.`,
+        title: "Horário reservado!",
+        text: `Olá, ${first}! Seu horário está reservado. Um dia antes, a Gabi vai pedir a sua confirmação pelo WhatsApp.`,
         ...appointmentBlocks(business, { startsAt, serviceName: service.name, durationMin: service.duration_min, priceCents: service.price_cents }),
         action: { label: "Adicionar ao calendário", url: calendar.cliente },
         secondaryAction: whatsappAction(

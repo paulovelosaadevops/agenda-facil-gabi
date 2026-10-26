@@ -7,6 +7,7 @@ import { Banner, HeaderButton, Loading, Row, RowIcon, Screen, Section, Text } fr
 import { formatDuration, formatInTz, formatMoney, whatsappLink } from "@shared/format.ts";
 import type { AppointmentStatus, AppointmentWithRefs } from "@shared/types.ts";
 import { useBusiness } from "@/lib/auth";
+import { confirmationRequestLink } from "@/lib/confirmation";
 import { openCalendar } from "@/lib/ics";
 import { callFunction, dbErrorMessage, supabase } from "@/lib/supabase";
 import { useTheme } from "@/lib/theme";
@@ -75,15 +76,14 @@ export default function AppointmentDetail() {
         <Section>
           <Row
             leading={<RowIcon name="message" />}
-            title="Confirmar pelo WhatsApp"
+            // Pendente: pede a confirmação; depois de confirmado, só abre a conversa.
+            title={appt.status === "pending" ? "Pedir confirmação no WhatsApp" : "Enviar mensagem no WhatsApp"}
             chevron
             onPress={() =>
               Linking.openURL(
-                whatsappLink(
-                  appt.clients!.phone,
-                  `Olá, ${appt.clients!.name.split(" ")[0]}! Aqui é a Gabi. Passando para confirmar seu horário de ${appt.services?.name ?? "atendimento"} ` +
-                    `marcado para ${formatInTz(appt.starts_at, "EEEE, dd/MM 'às' HH:mm", business.timezone)}. Posso contar com você?`,
-                ),
+                appt.status === "pending"
+                  ? confirmationRequestLink(appt, tz)!
+                  : whatsappLink(appt.clients!.phone, `Olá, ${appt.clients!.name.split(" ")[0]}! Aqui é a Gabi.`),
               )
             }
           />
@@ -109,12 +109,16 @@ export default function AppointmentDetail() {
       <Section>
         {active ? (
           [
+            appt.status === "pending" && (
+              <Row key="ok" leading={<RowIcon name="check" />} title="Marcar como confirmado" onPress={() => setStatus("confirmed")} />
+            ),
             <Row key="c" leading={<RowIcon name="check" />} title="Concluir atendimento" onPress={() => setStatus("completed")} />,
             <Row key="n" leading={<RowIcon name="noShow" />} title="Cliente não compareceu" onPress={() => setStatus("no_show")} />,
             <Row key="x" leading={<RowIcon name="cancel" tone="destructive" />} title="Cancelar agendamento" tone="destructive" onPress={() => setStatus("cancelled")} />,
           ]
         ) : (
-          <Row leading={<RowIcon name="reopen" />} title="Reabrir agendamento" onPress={() => setStatus("confirmed")} />
+          // Reaberto volta a precisar de confirmação.
+          <Row leading={<RowIcon name="reopen" />} title="Reabrir agendamento" onPress={() => setStatus("pending")} />
         )}
       </Section>
     </Screen>

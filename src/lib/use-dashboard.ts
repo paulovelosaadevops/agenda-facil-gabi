@@ -15,18 +15,21 @@ export function useDashboard(business: Business) {
     const today = dayBounds(toDateKey(now, tz), tz);
     const local = new TZDate(now.getTime(), tz);
     const monthStart = new Date(new TZDate(local.getFullYear(), local.getMonth(), 1, 0, 0, 0, tz).getTime());
+    const monthEnd = new Date(new TZDate(local.getFullYear(), local.getMonth() + 1, 1, 0, 0, 0, tz).getTime());
+    const tomorrow = dayBounds(toDateKey(addDays(now, 1), tz), tz);
     const base = () => supabase.from("appointments").select(SELECT).eq("business_id", business.id);
 
-    const [todayRes, nextRes, monthRes, weekRes, birthdaysRes, maintenanceRes, newClientsRes] = await Promise.all([
+    const [todayRes, nextRes, monthRes, weekRes, birthdaysRes, maintenanceRes, newClientsRes, toConfirmRes] = await Promise.all([
       base().gte("starts_at", today.start.toISOString()).lt("starts_at", today.end.toISOString()).order("starts_at").returns<AppointmentWithRefs[]>(),
       base().in("status", ["pending", "confirmed"]).gte("starts_at", now.toISOString()).order("starts_at").limit(1).returns<AppointmentWithRefs[]>(),
-      // Mês: atendimentos realizados (faturamento e ticket médio).
+      // Mês inteiro: concluídos (lucro), confirmados (previsto) e pendentes (aguardando confirmação).
       supabase
         .from("appointments")
-        .select("price_cents")
+        .select("price_cents, status")
         .eq("business_id", business.id)
-        .eq("status", "completed")
-        .gte("starts_at", monthStart.toISOString()),
+        .in("status", ["completed", "confirmed", "pending"])
+        .gte("starts_at", monthStart.toISOString())
+        .lt("starts_at", monthEnd.toISOString()),
       supabase
         .from("appointments")
         .select("id", { count: "exact", head: true })
@@ -48,17 +51,28 @@ export function useDashboard(business: Business) {
         .select("id", { count: "exact", head: true })
         .eq("business_id", business.id)
         .gte("created_at", monthStart.toISOString()),
+      // Véspera: horários de amanhã que ainda precisam da confirmação da cliente.
+      base()
+        .eq("status", "pending")
+        .gte("starts_at", tomorrow.start.toISOString())
+        .lt("starts_at", tomorrow.end.toISOString())
+        .order("starts_at")
+        .returns<AppointmentWithRefs[]>(),
     ]);
     if (todayRes.error) throw todayRes.error;
 
     const month = local.getMonth() + 1;
+    const sum = (status: string) => (monthRes.data ?? []).filter((a) => a.status === status).reduce((s, a) => s + a.price_cents, 0);
     return {
       now,
       hour: local.getHours(),
       today: todayRes.data,
       next: nextRes.data?.[0],
-      monthRevenue: (monthRes.data ?? []).reduce((sum, a) => sum + a.price_cents, 0),
-      monthDone: monthRes.data?.length ?? 0,
+      monthRevenue: sum("completed"),
+      monthDone: (monthRes.data ?? []).filter((a) => a.status === "completed").length,
+      monthConfirmed: sum("confirmed"),
+      monthPending: sum("pending"),
+      toConfirm: toConfirmRes.data ?? [],
       newClients: newClientsRes.count ?? 0,
       maintenance: maintenanceRes.data ?? [],
       upcoming: weekRes.count ?? 0,

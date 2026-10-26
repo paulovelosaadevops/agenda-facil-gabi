@@ -88,14 +88,15 @@ describe.runIf(run)("regras do estúdio com banco real", () => {
 
   it("intervalo de 30 min: agendamento às 09:00 (1h) libera o próximo às 10:30", async () => {
     const before = (await getAvailableSlots(admin, business, serviceId, date)).map(local);
-    expect(before).toEqual(["09:00", "09:30", "10:00", "10:30", "11:00"]);
+    // Grade 09:00–12:00 (último início 11:30): com o limite de término (20:30), o atendimento pode passar das 12:00.
+    expect(before).toEqual(["09:00", "09:30", "10:00", "10:30", "11:00", "11:30"]);
 
     const client = await upsertClientProfile(admin, business.id, profile("5511988887777", "Ana"));
     const nine = (await getAvailableSlots(admin, business, serviceId, date))[0];
     await createBooking(admin, { business, serviceId, clientId: client.id, startsAt: nine, source: "panel", enforceRules: false, notifyClient: true });
 
     const after = (await getAvailableSlots(admin, business, serviceId, date)).map(local);
-    expect(after).toEqual(["10:30", "11:00"]);
+    expect(after).toEqual(["10:30", "11:00", "11:30"]);
 
     // O banco recusa invadir o intervalo mesmo sem passar pelas regras do app.
     const { error } = await admin.from("appointments").insert({
@@ -204,7 +205,7 @@ describe.runIf(run)("regras do estúdio com banco real", () => {
 
   it("cancelar libera o horário de novo", async () => {
     const before = (await getAvailableSlots(admin, business, serviceId, date)).length;
-    const { data: appts } = await admin.from("appointments").select("id").eq("business_id", business.id).eq("status", "confirmed").gte("starts_at", new Date().toISOString());
+    const { data: appts } = await admin.from("appointments").select("id").eq("business_id", business.id).in("status", ["pending", "confirmed"]).gte("starts_at", new Date().toISOString());
     for (const a of appts ?? []) await owner.from("appointments").update({ status: "cancelled" }).eq("id", a.id);
     const after = (await getAvailableSlots(admin, business, serviceId, date)).length;
     expect(after).toBeGreaterThan(before);

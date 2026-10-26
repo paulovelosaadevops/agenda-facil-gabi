@@ -1,5 +1,6 @@
 import { differenceInMinutes, addDays } from "date-fns";
 import { Link, useRouter, type Href } from "expo-router";
+import { useState } from "react";
 import { Linking, Pressable, StyleSheet, View } from "react-native";
 import { AppointmentList } from "@/components/appointment-list";
 import { BellButton } from "@/components/bell-button";
@@ -10,8 +11,11 @@ import { Avatar, Banner, HeaderButton, Loading, Row, Screen, Section, Text } fro
 import { toDateKey } from "@shared/availability.ts";
 import { formatInTz } from "@shared/format.ts";
 import { useBusiness } from "@/lib/auth";
+import { confirmationRequestLink } from "@/lib/confirmation";
+import { dbErrorMessage, supabase } from "@/lib/supabase";
 import { Serif, useTheme } from "@/lib/theme";
 import { useDashboard } from "@/lib/use-dashboard";
+import { invalidate } from "@/lib/use-query";
 
 const greeting = (h: number) => (h < 12 ? "Bom dia" : h < 18 ? "Boa tarde" : "Boa noite");
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -62,6 +66,19 @@ export default function Dashboard() {
   const { data, error, loading, refreshing, refresh } = useDashboard(business);
   const now = data?.now ?? new Date();
   const next = data?.next;
+  const [confirming, setConfirming] = useState<string>();
+  const [actionError, setActionError] = useState<string>();
+
+  /** A cliente respondeu: o agendamento passa de pendente para confirmado. */
+  const confirm = async (id: string) => {
+    setConfirming(id);
+    setActionError(undefined);
+    const { error: e } = await supabase.from("appointments").update({ status: "confirmed" }).eq("id", id).eq("business_id", business.id);
+    setConfirming(undefined);
+    if (e) return setActionError(dbErrorMessage(e));
+    invalidate();
+    refresh();
+  };
 
   return (
     <Screen refreshing={refreshing} onRefresh={refresh}>
@@ -77,6 +94,7 @@ export default function Dashboard() {
         }
       />
       {error && <Banner>{error}</Banner>}
+      {actionError && <Banner>{actionError}</Banner>}
       {loading || !data ? (
         <Loading />
       ) : (
@@ -135,12 +153,85 @@ export default function Dashboard() {
             ))}
           </View>
 
+          {/* Véspera: pedir confirmação pelo WhatsApp e marcar quando a cliente responder. */}
+          {data.toConfirm.length > 0 && (
+            <Section header="Pedir confirmação · amanhã" footer="Toque no WhatsApp para enviar o pedido já escrito. Quando a cliente responder, toque em Confirmar.">
+              {data.toConfirm.map((a) => (
+                <Row
+                  key={a.id}
+                  leading={<Avatar name={a.clients?.name ?? "?"} size={34} />}
+                  inset={62}
+                  title={a.clients?.name ?? "Cliente"}
+                  subtitle={`${formatInTz(a.starts_at, "HH:mm", tz)} · ${a.services?.name ?? "Atendimento"}`}
+                  href={`/agenda/${a.id}`}
+                  trailing={
+                    <View style={styles.confirmActions}>
+                      <Pressable
+                        hitSlop={10}
+                        accessibilityLabel={`Pedir confirmação para ${a.clients?.name} no WhatsApp`}
+                        onPress={() => {
+                          const link = confirmationRequestLink(a, tz, now);
+                          if (link) void Linking.openURL(link);
+                        }}
+                      >
+                        <Icon name="message" size={22} color={theme.accent} />
+                      </Pressable>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={`Marcar ${a.clients?.name} como confirmada`}
+                        disabled={confirming === a.id}
+                        onPress={() => void confirm(a.id)}
+                        style={({ pressed }) => [styles.confirmButton, { backgroundColor: theme.fill, opacity: pressed || confirming === a.id ? 0.5 : 1 }]}
+                      >
+                        <Text variant="subhead" color="accent" style={{ fontWeight: "600" }}>
+                          Confirmar
+                        </Text>
+                      </Pressable>
+                    </View>
+                  }
+                />
+              ))}
+            </Section>
+          )}
+
+          {/* Lucro do mês: o realizado é o que a Gabi marcou como concluído; o previsto, o que já foi confirmado. */}
+          <View style={[styles.profit, { backgroundColor: theme.surface }]}>
+            <Text variant="overline" color="label2">
+              {`LUCRO DE ${formatInTz(now, "MMMM", tz).toUpperCase()}`}
+            </Text>
+            <View style={styles.profitRow}>
+              <View style={{ flex: 1 }}>
+                <Text variant="caption" color="label2">
+                  Realizado
+                </Text>
+                <Text style={[styles.profitValue, { color: theme.label }]}>{money(data.monthRevenue)}</Text>
+                <Text variant="caption" color="label3">
+                  {data.monthDone} {data.monthDone === 1 ? "atendimento concluído" : "atendimentos concluídos"}
+                </Text>
+              </View>
+              <View style={[styles.profitDivider, { backgroundColor: theme.separator }]} />
+              <View style={{ flex: 1 }}>
+                <Text variant="caption" color="label2">
+                  Previsto
+                </Text>
+                <Text style={[styles.profitValue, { color: theme.accent }]}>{money(data.monthConfirmed)}</Text>
+                <Text variant="caption" color="label3">
+                  confirmados a realizar
+                </Text>
+              </View>
+            </View>
+            {data.monthPending > 0 && (
+              <Text variant="footnote" color="label2" style={{ marginTop: 12 }}>
+                + {money(data.monthPending)} aguardando confirmação
+              </Text>
+            )}
+          </View>
+
           {/* Números do negócio */}
           <View style={styles.stats}>
             {[
               ["Hoje", String(data.today.filter((a) => a.status !== "cancelled" && a.status !== "no_show").length), "atendimentos"],
               ["Próximos 7 dias", String(data.upcoming), "agendados"],
-              ["Faturado", money(data.monthRevenue), "no mês"],
               ["Ticket médio", data.monthDone ? money(Math.round(data.monthRevenue / data.monthDone)) : "—", "no mês"],
               ["Atendidas", String(data.monthDone), "no mês"],
               ["Novas clientes", String(data.newClients), "no mês"],
@@ -243,4 +334,10 @@ const styles = StyleSheet.create({
   stat: { flexGrow: 1, flexBasis: "45%", borderRadius: 16, paddingHorizontal: 14, paddingVertical: 12, borderCurve: "continuous" },
   sectionTitle: { flexDirection: "row", alignItems: "baseline", justifyContent: "space-between", marginBottom: 8, paddingHorizontal: 4 },
   emptyToday: { borderRadius: 12, padding: 20, alignItems: "center" },
+  confirmActions: { flexDirection: "row", alignItems: "center", gap: 14 },
+  confirmButton: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999 },
+  profit: { borderRadius: 16, paddingHorizontal: 16, paddingVertical: 14, marginBottom: 10, borderCurve: "continuous" },
+  profitRow: { flexDirection: "row", alignItems: "stretch", gap: 14, marginTop: 10 },
+  profitDivider: { width: StyleSheet.hairlineWidth },
+  profitValue: { fontFamily: Serif.medium, fontSize: 30, lineHeight: 36, fontVariant: ["lining-nums"] },
 });
