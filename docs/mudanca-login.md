@@ -198,8 +198,9 @@ A ordem evita deixar o agendamento fora do ar: primeiro o servidor passa a criar
 - **Publicação Etapas 1+2 (05/11/2026), parcial:**
   - ✅ Migration `20261105000000_login_servidor.sql` em produção (função executável só pelo `service_role`, conferido).
   - ✅ Função `public-booking` em produção; `request-code` com e-mail desconhecido responde `needsProfile` sem criar conta (conferido).
-  - ⏳ **Site NÃO publicado**: o EAS CLI desta máquina estava logado na conta `paulovelosa.globant`, e o projeto é da conta `paulovelosaaa` ("Entity not authorized"). Falta: logar na conta certa e rodar o deploy (ver [web-deploy na memória] / `npx eas-cli@latest deploy --prod`, depois conferir o hash `entry-*.js`). O `dist/` já gerado com `.env.production` pode ser reaproveitado se o código não mudar.
-  - O site antigo continua funcionando com a função nova (a ação `lookup` e o cadastro por OTP ainda existem; só serão fechados na Etapa 3).
+  - ✅ Site publicado em 05/11/2026 (bundle `entry-fc053bad`), depois de logar o EAS CLI no usuário **`paulovelosaaa`** (e-mail Yahoo), dono do projeto. Contas `paulovelosa` (iCloud) e `paulovelosa.globant` **não** têm acesso.
+  - ⏳ Aguardando os testes do usuário (roteiro de cliente e Nail entregue na conversa) antes da Etapa 3.
+  - O cadastro **ainda está aberto no backend** (Supabase Auth `enable_signup`, gatilho `handle_new_client`, ação `lookup`): fechar é a Etapa 3.
 - [ ] Etapa 3 — Fechar o cadastro no backend
 - [ ] Etapa 4 — Conta da Nail por script e contas existentes
 - [ ] Etapa 5 — Testes e publicação
