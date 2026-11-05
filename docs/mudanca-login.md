@@ -212,7 +212,9 @@ A ordem evita deixar o agendamento fora do ar: primeiro o servidor passa a criar
   - Boas-vindas e "Como funciona" ([how-it-works.tsx](../src/components/how-it-works.tsx)) com duas partes: **o agendamento** e **o seu painel** (passo a passo).
   - Testes: integração 42/42 (caso novo de `hasPassword`); ponta a ponta local 6/6 (primeira vez com código, cria senha, volta pedindo senha sem código, login com senha, esqueci a senha).
   - ✅ **Publicada em 05/11/2026**: migration (só `service_role`, conferido) → `public-booking` (e-mail desconhecido → `needsProfile`, conferido) → site (bundle `entry-f1c04ab6`).
-  - ⏳ Aguardando os testes do usuário (roteiro atualizado com senha, entregue na conversa). Depois: **Etapa 3**.
+  - Ajustes publicados em 05/11/2026 (site `entry-b8efd0ba` + funções `public-booking`, `panel`, `whatsapp-webhook`): boas-vindas e "Como funciona" viraram **popup passo a passo** (`HowItWorksModal`; a tela `cliente/como-funciona` saiu); e, fora do escopo de login, a regra de pés passou a valer para **combos que incluem pés** (`requiresFeet`).
+  - Conta, ficha e agendamento de teste do `paulo.velosa@yahoo.com.br` apagados a pedido (backup em `backups/2026-11-05-paulo-yahoo/`), para refazer o teste como cliente nova pelo celular.
+  - ⏳ Aguardando os testes do usuário no site oficial. Depois: **Etapa 3**.
 - [ ] Etapa 3 — Fechar o cadastro no backend
 - [ ] Etapa 4 — Conta da Nail por script e contas existentes
 - [ ] Etapa 5 — Testes e publicação
