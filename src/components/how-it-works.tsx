@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Modal, Pressable, StyleSheet, View } from "react-native";
 import { Serif, useTheme } from "@/lib/theme";
 import { Icon, type IconName } from "./icon";
+import { ModalBackdrop } from "./modal-backdrop";
 import { Button, Text } from "./ui";
 
 type Step = { section?: string; icon: IconName; title: string; text: string };
@@ -101,7 +102,7 @@ export function HowItWorksModal({
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={close}>
-      <View style={styles.backdrop}>
+      <ModalBackdrop>
         <View style={[styles.card, { backgroundColor: theme.bg }]} accessibilityViewIsModal>
           <View style={styles.top}>
             <Text variant="footnote" color="label3">
@@ -147,13 +148,12 @@ export function HowItWorksModal({
             <Button title={last ? "Começar a usar" : "Próximo"} onPress={() => (last ? close() : setIndex(index + 1))} style={{ flex: 1 }} />
           </View>
         </View>
-      </View>
+      </ModalBackdrop>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.45)", alignItems: "center", justifyContent: "center", padding: 20 },
   card: { width: "100%", maxWidth: 420, borderRadius: 28, padding: 24, borderCurve: "continuous" },
   top: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", minHeight: 22 },
   body: { alignItems: "center", paddingTop: 20, paddingBottom: 8, minHeight: 300 },

@@ -1,6 +1,7 @@
 import { Modal, StyleSheet, View } from "react-native";
 import { Serif, useTheme } from "@/lib/theme";
 import { Icon } from "./icon";
+import { ModalBackdrop } from "./modal-backdrop";
 import { Button, Text } from "./ui";
 
 /**
@@ -11,7 +12,7 @@ export function ReturningClientModal({ visible, onReturning, onFirstTime }: { vi
   const theme = useTheme();
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onFirstTime}>
-      <View style={styles.backdrop}>
+      <ModalBackdrop>
         <View style={[styles.card, { backgroundColor: theme.bg }]} accessibilityViewIsModal>
           <View style={[styles.halo, { backgroundColor: theme.fill }]}>
             <View style={[styles.iconCircle, { backgroundColor: theme.accentStrong }]}>
@@ -27,13 +28,12 @@ export function ReturningClientModal({ visible, onReturning, onFirstTime }: { vi
             <Button title="É minha primeira vez" variant="tinted" onPress={onFirstTime} />
           </View>
         </View>
-      </View>
+      </ModalBackdrop>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.45)", alignItems: "center", justifyContent: "center", padding: 20 },
   card: { width: "100%", maxWidth: 420, borderRadius: 28, padding: 28, alignItems: "center", borderCurve: "continuous" },
   halo: { width: 104, height: 104, borderRadius: 52, alignItems: "center", justifyContent: "center" },
   iconCircle: { width: 72, height: 72, borderRadius: 36, alignItems: "center", justifyContent: "center" },
