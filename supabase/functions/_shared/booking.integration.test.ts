@@ -5,6 +5,7 @@ import { addDays } from "date-fns";
 import { beforeAll, describe, expect, it } from "vitest";
 import { toDateKey } from "./availability.ts";
 import { BookingError, createBooking, getAvailableSlots, upsertClientProfile } from "./booking.ts";
+import { ensureClientAccount } from "./client-account.ts";
 import { formatInTz } from "./format.ts";
 import type { Business, Client } from "./types.ts";
 
@@ -209,5 +210,76 @@ describe.runIf(run)("regras do estúdio com banco real", () => {
     for (const a of appts ?? []) await owner.from("appointments").update({ status: "cancelled" }).eq("id", a.id);
     const after = (await getAvailableSlots(admin, business, serviceId, date)).length;
     expect(after).toBeGreaterThan(before);
+  });
+
+  // Login sem autocadastro (docs/mudanca-login.md, Etapa 1): a conta da cliente é criada pelo servidor.
+  describe("conta da cliente criada pelo servidor", () => {
+    const newData = (phone: string, name = "Nova Cliente") => ({ name, phone, whatsapp: true, instagram: "@nova" });
+    const mail = () => `c-${crypto.randomUUID()}@example.com`;
+    const userOf = async (id: string) => (await admin.auth.admin.getUserById(id)).data.user!;
+
+    it("e-mail sem ficha e sem dados: pede os dados", async () => {
+      expect(await ensureClientAccount(admin, business, mail())).toEqual({ needsProfile: true });
+    });
+
+    it("primeiro agendamento: cria ficha e conta, com o papel no app_metadata", async () => {
+      const email = mail();
+      const r = await ensureClientAccount(admin, business, email.toUpperCase(), newData("5511970000001"));
+      if (r.needsProfile) throw new Error("devia criar");
+      expect(r.client.email).toBe(email);
+      expect(r.client.user_id).toBe(r.userId);
+      const user = await userOf(r.userId);
+      expect(user.app_metadata.role).toBe("client");
+      expect(user.email_confirmed_at).toBeTruthy();
+
+      // Cliente que volta: mesma ficha e conta, sem dados.
+      const again = await ensureClientAccount(admin, business, email);
+      expect(again.needsProfile === false && again.client.id).toBe(r.client.id);
+    });
+
+    it("cliente cadastrada pela Nail: primeiro acesso só com o e-mail liga a conta à ficha", async () => {
+      const email = mail();
+      const { data: ficha } = await owner
+        .from("clients")
+        .insert({ business_id: business.id, name: "Da Nail", phone: "5511970000002", email, instagram: "@danail" })
+        .select("id")
+        .single();
+      const r = await ensureClientAccount(admin, business, email);
+      if (r.needsProfile) throw new Error("devia ligar");
+      expect(r.client.id).toBe(ficha!.id);
+      const { count } = await admin.from("clients").select("id", { count: "exact", head: true }).eq("phone", "5511970000002");
+      expect(count).toBe(1);
+    });
+
+    it("telefone já cadastrado pela Nail sem e-mail: liga à ficha existente, sem duplicar", async () => {
+      await owner.from("clients").insert({ business_id: business.id, name: "Sem Email", phone: "5511970000003" });
+      const email = mail();
+      const r = await ensureClientAccount(admin, business, email, newData("5511970000003", "Outro Nome"));
+      if (r.needsProfile) throw new Error("devia ligar");
+      expect(r.client.name).toBe("Sem Email"); // manteve a ficha da Nail
+      expect(r.client.email).toBe(email);
+      const { count } = await admin.from("clients").select("id", { count: "exact", head: true }).eq("phone", "5511970000003");
+      expect(count).toBe(1);
+    });
+
+    it("telefone com outro e-mail ou já ligado a outra conta: recusa", async () => {
+      await owner.from("clients").insert({ business_id: business.id, name: "Tem Email", phone: "5511970000004", email: mail() });
+      await expect(ensureClientAccount(admin, business, mail(), newData("5511970000004"))).rejects.toThrow(/outro e-mail/);
+      await expect(ensureClientAccount(admin, business, mail(), newData("5511970000001"))).rejects.toThrow(/outra conta/);
+    });
+
+    it("e-mail da conta da Nail não vira cliente", async () => {
+      const { data } = await owner.auth.getUser();
+      await expect(ensureClientAccount(admin, business, data.user!.email!, newData("5511970000005"))).rejects.toThrow(/conta do estúdio/);
+    });
+
+    it("conta de login sem ficha (ficha apagada): recria a ficha e liga", async () => {
+      const email = mail();
+      const { data: orphan } = await admin.auth.admin.createUser({ email, email_confirm: true });
+      const r = await ensureClientAccount(admin, business, email, newData("5511970000006"));
+      if (r.needsProfile) throw new Error("devia ligar");
+      expect(r.userId).toBe(orphan.user!.id);
+      expect((await userOf(r.userId)).app_metadata.role).toBe("client");
+    });
   });
 });

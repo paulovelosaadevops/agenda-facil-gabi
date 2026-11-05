@@ -50,6 +50,20 @@ function serviceKey(): string {
   return keys.default ?? Object.values(keys)[0];
 }
 
+function publishableKey(): string {
+  const legacy = getEnv("SUPABASE_ANON_KEY");
+  if (legacy) return legacy;
+  const keys = JSON.parse(requireEnv("SUPABASE_PUBLISHABLE_KEYS")) as Record<string, string>;
+  return keys.default ?? Object.values(keys)[0];
+}
+
+/** Cliente com a chave pública, sem sessão: para disparar o código por e-mail (signInWithOtp) do servidor. */
+export function publicClient(): SupabaseClient {
+  return createClient(requireEnv("SUPABASE_URL"), publishableKey(), {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+}
+
 /** Cliente com service role: ignora RLS, então sempre filtre por business_id. */
 export function adminClient(): SupabaseClient {
   return createClient(requireEnv("SUPABASE_URL"), serviceKey(), {

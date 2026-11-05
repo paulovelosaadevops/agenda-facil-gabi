@@ -4,7 +4,8 @@ import { z } from "zod";
 import { BookingError, createBooking, getAvailableSlots } from "../_shared/booking.ts";
 import { calendarUrl } from "../_shared/calendar.ts";
 import { formatInTz, normalizePhone } from "../_shared/format.ts";
-import { adminClient, handler, HttpError, json, loadStudio, readJson, requireClient } from "../_shared/http.ts";
+import { ensureClientAccount, type NewClientData } from "../_shared/client-account.ts";
+import { adminClient, handler, HttpError, json, loadStudio, publicClient, readJson, requireClient } from "../_shared/http.ts";
 
 const Request = z.discriminatedUnion("action", [
   z.object({ action: z.literal("info"), slug: z.string().optional() }),
@@ -31,6 +32,20 @@ const Request = z.discriminatedUnion("action", [
   }),
   // O e-mail já é de uma cliente com conta? Decide se o link pede só o código ou também os dados.
   z.object({ action: z.literal("lookup"), email: z.string().trim().toLowerCase().email() }),
+  // Login sem autocadastro: o servidor garante a conta (cria/liga à ficha) e envia o código por e-mail.
+  z.object({
+    action: z.literal("request-code"),
+    email: z.string().trim().toLowerCase().email(),
+    // Primeira vez: dados obrigatórios (D2). Quem já tem ficha (inclusive cadastrada pela Nail) não precisa.
+    profile: z
+      .object({
+        name: z.string().trim().min(3).max(120),
+        phone: z.string().trim().min(8).max(20),
+        whatsapp: z.boolean(),
+        instagram: z.string().trim().min(2).max(60),
+      })
+      .optional(),
+  }),
   z.object({ action: z.literal("my-calendar"), appointmentId: z.string().uuid() }),
 ]);
 
@@ -67,6 +82,26 @@ Deno.serve(
         if (!client) return json({ exists: false, hasPassword: false });
         const { data } = await db.auth.admin.getUserById(client.user_id);
         return json({ exists: true, hasPassword: Boolean(data.user?.user_metadata?.has_password) });
+      }
+
+      if (input.action === "request-code") {
+        const db = adminClient();
+        let profile: NewClientData | undefined;
+        if (input.profile) {
+          const phone = normalizePhone(input.profile.phone);
+          if (!phone) throw new HttpError(400, "Telefone inválido. Use DDD + número.");
+          profile = { ...input.profile, phone, instagram: input.profile.instagram.replace(/^@?/, "@") };
+        }
+        const result = await ensureClientAccount(db, await loadStudio(db), input.email, profile);
+        if (result.needsProfile) return json({ needsProfile: true });
+
+        // A conta já existe (criada acima): o código nunca cria conta (shouldCreateUser: false).
+        const { error } = await publicClient().auth.signInWithOtp({ email: input.email, options: { shouldCreateUser: false } });
+        if (error) {
+          if (/rate|seconds|security purposes/i.test(error.message)) throw new HttpError(429, "Aguarde alguns segundos para pedir outro código.");
+          throw new HttpError(502, "Não foi possível enviar o código. Confira o e-mail e tente de novo.");
+        }
+        return json({ needsProfile: false, sent: true });
       }
 
       if (input.action === "book") {
