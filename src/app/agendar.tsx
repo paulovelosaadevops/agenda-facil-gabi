@@ -1,10 +1,11 @@
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BookingFlow } from "@/components/booking-flow";
 import { Logo } from "@/components/logo";
-import { Banner, Loading, Text } from "@/components/ui";
+import { ReturningClientModal } from "@/components/returning-client-modal";
+import { Banner, Loading } from "@/components/ui";
 import { useAuth } from "@/lib/auth";
 import { buildDays, useStudioInfo } from "@/lib/studio";
 import { useTheme } from "@/lib/theme";
@@ -23,6 +24,7 @@ export default function PublicBooking() {
   const { data, loading, error } = useStudioInfo();
   // Durante a confirmação do código há uma sessão temporária: o fluxo continua aqui até a tela final.
   const [confirming, setConfirming] = useState(false);
+  const [askReturning, setAskReturning] = useState(true);
 
   if (!confirming && role === "client") return <Redirect href={servico ? { pathname: "/cliente/agendar", params: { servico } } : "/cliente/agendar"} />;
   if (!confirming && role === "owner") return <Redirect href="/inicio" />;
@@ -37,22 +39,15 @@ export default function PublicBooking() {
           <Logo width={190} />
         </View>
 
-        {/* D8: quem já é cliente entra no painel (e-mail + senha) e agenda por lá. */}
-        <Pressable
-          accessibilityRole="link"
-          onPress={() => router.push(servico ? { pathname: "/entrar", params: { servico } } : "/entrar")}
-          style={({ pressed }) => [styles.returning, { backgroundColor: theme.surface, opacity: pressed ? 0.7 : 1 }]}
-        >
-          <View style={{ flex: 1 }}>
-            <Text variant="headline">Já é minha cliente?</Text>
-            <Text variant="subhead" color="label2">
-              Entre no seu painel com e-mail e senha para agendar.
-            </Text>
-          </View>
-          <Text color="accent" style={{ fontWeight: "600" }}>
-            Entrar
-          </Text>
-        </Pressable>
+        {/* D8: ao abrir o link, quem já é cliente entra no painel (e-mail + senha) e agenda por lá. */}
+        <ReturningClientModal
+          visible={askReturning}
+          onReturning={() => {
+            setAskReturning(false);
+            router.push(servico ? { pathname: "/entrar", params: { servico } } : "/entrar");
+          }}
+          onFirstTime={() => setAskReturning(false)}
+        />
 
         {error && <Banner>{error}</Banner>}
         {loading || !data ? (
@@ -81,5 +76,4 @@ export default function PublicBooking() {
 const styles = StyleSheet.create({
   content: { paddingHorizontal: 20, width: "100%", maxWidth: 520, alignSelf: "center" },
   brand: { alignItems: "center", marginBottom: 28 },
-  returning: { flexDirection: "row", alignItems: "center", gap: 12, borderRadius: 16, padding: 16, marginBottom: 24, borderCurve: "continuous" },
 });
