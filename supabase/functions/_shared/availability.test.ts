@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { computeSlots, dayBounds, dayGrid, fitsWorkingHours, overlapsAny, toDateKey, type SlotQuery } from "./availability.ts";
 import { formatInTz } from "./format.ts";
+import { requiresFeet } from "./types.ts";
 
 const TZ = "America/Sao_Paulo"; // UTC-3, sem horário de verão
 
@@ -121,6 +122,23 @@ describe("helpers de fuso", () => {
     const wh = base().workingHours;
     expect(fitsWorkingHours(new Date("2026-10-21T14:00:00Z"), 60, TZ, wh)).toBe(true); // 11h-12h
     expect(fitsWorkingHours(new Date("2026-10-21T14:30:00Z"), 60, TZ, wh)).toBe(false); // 11h30-12h30
+  });
+});
+
+describe("serviços de pés", () => {
+  const pe = { id: "pe", feet: true };
+  const mao = { id: "mao", feet: false };
+  const all = [pe, mao];
+
+  it("serviço de pés e combo que inclui pés exigem cliente liberada", () => {
+    expect(requiresFeet(pe, all)).toBe(true);
+    expect(requiresFeet({ feet: false, combo_service_ids: ["pe", "mao"] }, all)).toBe(true); // "Mão + Pé" sem a marca
+  });
+
+  it("serviço e combo sem pés não exigem", () => {
+    expect(requiresFeet(mao, all)).toBe(false);
+    expect(requiresFeet({ feet: false, combo_service_ids: ["mao"] }, all)).toBe(false);
+    expect(requiresFeet({ combo_service_ids: null }, all)).toBe(false);
   });
 });
 

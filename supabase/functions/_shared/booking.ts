@@ -5,7 +5,7 @@ import { formatInTz, formatPhone, whatsappLink } from "./format.ts";
 import { appointmentBlocks, appUrl, notifyClient, notifyOwner, whatsappAction } from "./notify.ts";
 import { pushToOwner } from "./push.ts";
 import { BookingError, getService, loadBusy, loadWorkingHours } from "./slots.ts";
-import type { AppointmentSource, Business, Client } from "./types.ts";
+import { requiresFeet, type AppointmentSource, type Business, type Client } from "./types.ts";
 
 export { BookingError, getAvailableSlots, getService } from "./slots.ts";
 
@@ -105,8 +105,11 @@ export async function createBooking(db: SupabaseClient, input: CreateBookingInpu
     }
   }
 
-  // Serviços de pés só para clientes que a Gabi liberou (o painel dela pode agendar qualquer serviço).
-  if (service.feet && input.enforceRules) {
+  // Serviços de pés (e combos com pés) só para clientes que a Gabi liberou (o painel dela pode agendar qualquer serviço).
+  const comboItems = service.combo_service_ids?.length
+    ? ((await db.from("services").select("id, feet").in("id", service.combo_service_ids)).data ?? [])
+    : [];
+  if (requiresFeet(service, comboItems) && input.enforceRules) {
     const { data: who, error: whoError } = await db.from("clients").select("feet").eq("id", input.clientId).single();
     if (whoError) throw whoError;
     if (!who.feet) {

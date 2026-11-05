@@ -52,8 +52,19 @@ export interface Service {
   /** Combo: serviços incluídos (preço e duração são os do próprio combo). */
   combo_service_ids: string[];
   category: ServiceCategory;
-  /** Serviço de pés: só para clientes liberadas (Client.feet). */
+  /** Serviço de pés: só para clientes liberadas (Client.feet). Combos com um serviço de pés também contam (requiresFeet). */
   feet: boolean;
+}
+
+/**
+ * O serviço exige cliente liberada para pés? Sim se ele é de pés ou se é um combo que inclui um serviço de pés
+ * (ex.: "Mão + Pé"), mesmo sem a marca no próprio combo. `all`: os serviços onde procurar os itens do combo.
+ */
+export function requiresFeet(
+  service: { feet?: boolean; combo_service_ids?: string[] | null },
+  all: { id: string; feet?: boolean }[],
+): boolean {
+  return Boolean(service.feet) || (service.combo_service_ids ?? []).some((id) => all.find((s) => s.id === id)?.feet);
 }
 
 export interface WorkingHours {

@@ -204,6 +204,26 @@ describe.runIf(run)("regras do estúdio com banco real", () => {
     await expect(book()).resolves.toBeTruthy();
   });
 
+  it("combo que inclui pés (sem a marca no combo) também é só para clientes liberadas", async () => {
+    const { data: pe } = await owner
+      .from("services")
+      .insert({ business_id: business.id, name: "Pé avulso", duration_min: 30, price_cents: 4000, feet: true })
+      .select("id")
+      .single();
+    const { data: combo, error: cErr } = await owner
+      .from("services")
+      .insert({ business_id: business.id, name: "Mão + Pé", duration_min: 60, price_cents: 9000, feet: false, combo_service_ids: [pe!.id] })
+      .select("id")
+      .single();
+    if (cErr) throw cErr;
+    const client = await upsertClientProfile(admin, business.id, profile("5511944444444", "Sem Pés"));
+    const day = toDateKey(addDays(new Date(), 9), business.timezone);
+    const [slot] = await getAvailableSlots(admin, business, combo.id, day);
+    await expect(
+      createBooking(admin, { business, serviceId: combo.id, clientId: client.id, startsAt: slot, source: "public", enforceRules: true, notifyClient: false }),
+    ).rejects.toThrow(/só para clientes que a Gabi já atende nos pés/);
+  });
+
   it("cancelar libera o horário de novo", async () => {
     const before = (await getAvailableSlots(admin, business, serviceId, date)).length;
     const { data: appts } = await admin.from("appointments").select("id").eq("business_id", business.id).in("status", ["pending", "confirmed"]).gte("starts_at", new Date().toISOString());

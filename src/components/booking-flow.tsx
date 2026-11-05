@@ -2,7 +2,7 @@ import { Stack } from "expo-router";
 import { useEffect, useState } from "react";
 import { Linking, Platform, Pressable, StyleSheet, View } from "react-native";
 import { formatDuration, formatInTz, formatMoney, normalizePhone, whatsappLink } from "@shared/format.ts";
-import { SERVICE_CATEGORIES, type Service, type ServiceCategory } from "@shared/types.ts";
+import { requiresFeet, SERVICE_CATEGORIES, type Service, type ServiceCategory } from "@shared/types.ts";
 import { openCalendar } from "@/lib/ics";
 import { authStorage } from "@/lib/storage";
 import { callFunction, supabase } from "@/lib/supabase";
@@ -381,8 +381,8 @@ export function BookingFlow({
   }
 
   // Serviços separados por categoria (Primeira aplicação, Manutenção, Outros).
-  // Serviços de pés: só para clientes que a Gabi liberou (no link público ficam ocultos).
-  const offered = services.filter((s) => allowFeet || !s.feet);
+  // Serviços de pés (e combos com pés, ex.: "Mão + Pé"): só para clientes que a Gabi liberou (no link público ficam ocultos).
+  const offered = services.filter((s) => allowFeet || !requiresFeet(s, services));
   const groups = SERVICE_CATEGORIES.map((c) => ({ ...c, services: offered.filter((s) => (s.category ?? "outros") === c.key) })).filter(
     (g) => g.services.length,
   );
