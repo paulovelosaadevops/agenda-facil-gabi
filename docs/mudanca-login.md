@@ -211,7 +211,8 @@ A ordem evita deixar o agendamento fora do ar: primeiro o servidor passa a criar
   - Painel: [cliente/_layout.tsx](../src/app/cliente/_layout.tsx) exige criar a senha antes de abrir, se ainda não tiver. "Meus dados" ganhou "Trocar senha".
   - Boas-vindas e "Como funciona" ([how-it-works.tsx](../src/components/how-it-works.tsx)) com duas partes: **o agendamento** e **o seu painel** (passo a passo).
   - Testes: integração 42/42 (caso novo de `hasPassword`); ponta a ponta local 6/6 (primeira vez com código, cria senha, volta pedindo senha sem código, login com senha, esqueci a senha).
-  - Publicação: migration → `public-booking` → site.
+  - ✅ **Publicada em 05/11/2026**: migration (só `service_role`, conferido) → `public-booking` (e-mail desconhecido → `needsProfile`, conferido) → site (bundle `entry-f1c04ab6`).
+  - ⏳ Aguardando os testes do usuário (roteiro atualizado com senha, entregue na conversa). Depois: **Etapa 3**.
 - [ ] Etapa 3 — Fechar o cadastro no backend
 - [ ] Etapa 4 — Conta da Nail por script e contas existentes
 - [ ] Etapa 5 — Testes e publicação
