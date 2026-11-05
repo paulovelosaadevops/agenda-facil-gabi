@@ -4,7 +4,7 @@ import { Icon, type IconName } from "@/components/icon";
 import { ScreenHeader } from "@/components/screen-header";
 import { STATUS_LABEL, statusColor } from "@/components/status";
 import { Avatar, Banner, HeaderButton, Loading, Row, Screen, Section, tap, Text } from "@/components/ui";
-import { formatInTz, formatMoney, formatPhone, whatsappLink } from "@shared/format.ts";
+import { formatInTz, formatMoney, formatPhone, isPendingEmail, whatsappLink } from "@shared/format.ts";
 import type { AppointmentWithRefs, Client } from "@shared/types.ts";
 import { useBusiness } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
@@ -107,7 +107,12 @@ export default function ClientDetail() {
             onPress={() => Linking.openURL(`https://instagram.com/${client.instagram.replace(/^@/, "")}`)}
           />
         ) : null}
-        {client.email ? <Row title="E-mail" detail={client.email} /> : null}
+        {/* E-mail provisório (.invalid): a Gabi ainda precisa atualizar; nada é enviado para ele. */}
+        {isPendingEmail(client.email) ? (
+          <Row title="E-mail" detail={<Text color="red">Pendente · atualize</Text>} href={{ pathname: "/clientes/form", params: { id: client.id } }} chevron />
+        ) : client.email ? (
+          <Row title="E-mail" detail={client.email} />
+        ) : null}
         <Row title="Conta para agendar" detail={client.user_id ? "Ativa" : "Sem conta"} />
       </Section>
 

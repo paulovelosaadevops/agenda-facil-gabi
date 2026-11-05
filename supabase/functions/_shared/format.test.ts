@@ -1,5 +1,34 @@
 import { describe, expect, it } from "vitest";
-import { formatPhone, normalizePhone, parseMoney } from "./format.ts";
+import { formatPhone, isPendingEmail, normalizePhone, parseMoney, summarizeWorkingHours } from "./format.ts";
+
+describe("summarizeWorkingHours", () => {
+  const day = (weekday: number, start_time: string, end_time: string) => ({ weekday, start_time, end_time });
+
+  it("junta dias seguidos com os mesmos horários e separa os diferentes", () => {
+    const hours = [2, 3, 4, 5].flatMap((d) => [day(d, "13:00:00", "17:00:00"), day(d, "08:00:00", "12:00:00")]);
+    expect(summarizeWorkingHours([...hours, day(6, "08:00:00", "12:00:00")])).toEqual([
+      { days: "Ter a Sex", periods: "08:00–12:00, 13:00–17:00" },
+      { days: "Sáb", periods: "08:00–12:00" },
+    ]);
+  });
+
+  it("dois dias seguidos usam 'e'; dias não seguidos ficam separados; domingo vem no fim", () => {
+    const h = day(1, "09:00", "12:00");
+    expect(summarizeWorkingHours([h, { ...h, weekday: 2 }, { ...h, weekday: 4 }, { ...h, weekday: 0 }]).map((g) => g.days)).toEqual(["Seg e Ter", "Qui", "Dom"]);
+  });
+
+  it("sem expediente: lista vazia", () => {
+    expect(summarizeWorkingHours([])).toEqual([]);
+  });
+});
+
+describe("isPendingEmail", () => {
+  it("reconhece só o e-mail provisório", () => {
+    expect(isPendingEmail("beatriz.949837279@email-pendente.invalid")).toBe(true);
+    expect(isPendingEmail("beatriz@gmail.com")).toBe(false);
+    expect(isPendingEmail(null)).toBe(false);
+  });
+});
 
 describe("normalizePhone", () => {
   it("adiciona DDI 55 a números brasileiros", () => {

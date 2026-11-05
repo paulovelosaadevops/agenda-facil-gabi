@@ -1,6 +1,7 @@
 import { createClient, type SupabaseClient, type User } from "@supabase/supabase-js";
 import { z } from "zod";
 import { getEnv, requireEnv } from "./env.ts";
+import { isPendingEmail } from "./format.ts";
 import type { Business, Client } from "./types.ts";
 
 // Mensagens de validação em português.
@@ -124,7 +125,7 @@ async function createClientFor(db: SupabaseClient, user: User, profile: ClientPr
   const { data, error } = byPhone
     ? await db
         .from("clients")
-        .update({ user_id: user.id, whatsapp: profile.whatsapp, instagram: byPhone.instagram || profile.instagram, email: byPhone.email ?? user.email })
+        .update({ user_id: user.id, whatsapp: profile.whatsapp, instagram: byPhone.instagram || profile.instagram, email: byPhone.email && !isPendingEmail(byPhone.email) ? byPhone.email : user.email })
         .eq("id", byPhone.id)
         .select("*")
         .single<Client>()

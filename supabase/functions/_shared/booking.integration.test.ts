@@ -289,6 +289,17 @@ describe.runIf(run)("regras do estúdio com banco real", () => {
       expect(count).toBe(1);
     });
 
+    it("ficha com e-mail provisório: o e-mail verdadeiro da cliente substitui o provisório", async () => {
+      await owner.from("clients").insert({ business_id: business.id, name: "Provisória", phone: "5511970000007", email: "provisoria.970000007@email-pendente.invalid" });
+      const email = mail();
+      const r = await ensureClientAccount(admin, business, email, newData("5511970000007", "Outro Nome"));
+      if (r.needsProfile) throw new Error("devia ligar");
+      expect(r.client.name).toBe("Provisória");
+      expect(r.client.email).toBe(email);
+      const { count } = await admin.from("clients").select("id", { count: "exact", head: true }).eq("phone", "5511970000007");
+      expect(count).toBe(1);
+    });
+
     it("telefone com outro e-mail ou já ligado a outra conta: recusa", async () => {
       await owner.from("clients").insert({ business_id: business.id, name: "Tem Email", phone: "5511970000004", email: mail() });
       await expect(ensureClientAccount(admin, business, mail(), newData("5511970000004"))).rejects.toThrow(/outro e-mail/);

@@ -2,7 +2,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { sendEmail, type Email } from "./email.ts";
 import { getEnv } from "./env.ts";
-import { formatDuration, formatInTz, formatMoney, whatsappLink } from "./format.ts";
+import { formatDuration, formatInTz, formatMoney, isPendingEmail, whatsappLink } from "./format.ts";
 import { sendMessage } from "./messaging/index.ts";
 import type { Business } from "./types.ts";
 
@@ -24,7 +24,8 @@ export interface Notice {
 /** Manda o aviso por todos os canais da cliente. Falha em um canal não impede o outro. */
 export async function notifyClient(db: SupabaseClient, business: Business, client: NotifyTarget, notice: Notice): Promise<boolean> {
   let delivered = false;
-  if (client.email) {
+  // E-mail provisório (.invalid) não recebe nada: evita devoluções que prejudicam a entrega dos e-mails reais.
+  if (client.email && !isPendingEmail(client.email)) {
     try {
       const id = await sendEmail({ ...notice.email, to: { email: client.email, name: client.name } });
       await db.from("messages").insert({

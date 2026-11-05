@@ -2,7 +2,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
 import { ScreenHeader } from "@/components/screen-header";
 import { Banner, FormRow, HeaderButton, Input, Screen, Section, SwitchRow, TextAreaRow } from "@/components/ui";
-import { formatPhone, normalizePhone } from "@shared/format.ts";
+import { formatPhone, isPendingEmail, normalizePhone } from "@shared/format.ts";
 import type { Client } from "@shared/types.ts";
 import { useBusiness } from "@/lib/auth";
 import { dbErrorMessage, supabase } from "@/lib/supabase";
@@ -22,6 +22,7 @@ export default function ClientForm() {
   const [form, setForm] = useState({ name: "", phone: "", instagram: "", email: "", birthday: "", notes: "" });
   const [whatsapp, setWhatsapp] = useState(true);
   const [feet, setFeet] = useState(false);
+  const [pendingEmail, setPendingEmail] = useState<string | null>(null);
   const [error, setError] = useState<string>();
   const [saving, setSaving] = useState(false);
   const set = (key: keyof typeof form) => (value: string) => setForm((f) => ({ ...f, [key]: value }));
@@ -30,11 +31,13 @@ export default function ClientForm() {
     if (!id) return null;
     const { data } = await supabase.from("clients").select("*").eq("id", id).eq("business_id", business.id).maybeSingle<Client>();
     if (data) {
+      if (isPendingEmail(data.email)) setPendingEmail(data.email);
       setForm({
         name: data.name,
         phone: formatPhone(data.phone),
         instagram: data.instagram,
-        email: data.email ?? "",
+        // Provisório aparece em branco; se continuar em branco ao salvar, o provisório é mantido.
+        email: isPendingEmail(data.email) ? "" : (data.email ?? ""),
         birthday: toBr(data.birthday),
         notes: data.notes,
       });
@@ -51,7 +54,8 @@ export default function ClientForm() {
     if (!phone) return setError("Telefone inválido. Use DDD + número.");
     // Regra do estúdio: todos os dados são obrigatórios.
     if (form.instagram.trim().length < 2) return setError("Informe o Instagram.");
-    if (!/^\S+@\S+\.\S+$/.test(form.email.trim())) return setError("Informe um e-mail válido.");
+    const emailToSave = form.email.trim() || pendingEmail;
+    if (!emailToSave || !/^\S+@\S+\.\S+$/.test(emailToSave)) return setError("Informe um e-mail válido.");
     const birthday = form.birthday ? toIso(form.birthday) : null;
     if (form.birthday && !birthday) return setError("Aniversário no formato dd/mm/aaaa.");
 
@@ -62,7 +66,7 @@ export default function ClientForm() {
       whatsapp,
       feet,
       instagram: form.instagram.trim().replace(/^@?/, "@"),
-      email: form.email.trim().toLowerCase(),
+      email: emailToSave.toLowerCase(),
       birthday,
       notes: form.notes.trim(),
     };

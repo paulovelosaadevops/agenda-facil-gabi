@@ -11,6 +11,8 @@ export type PublicService = Pick<Service, "id" | "name" | "description" | "durat
 export interface StudioInfo {
   business: { name: string; slug: string; address: string | null; phone: string | null; timezone: string; max_advance_days: number };
   services: PublicService[];
+  /** Expediente do estúdio, para exibir. */
+  hours?: { weekday: number; start_time: string; end_time: string }[];
 }
 
 /** Dados públicos do estúdio e serviços visíveis (vale com ou sem login). */

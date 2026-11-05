@@ -41,6 +41,7 @@ export default function ClientStack() {
       <Stack.Screen name="index" options={{ title: "Meus horários" }} />
       <Stack.Screen name="agendar" options={{ title: "Agendar" }} />
       <Stack.Screen name="perfil" options={{ ...modalOptions, title: "Meus dados" }} />
+      <Stack.Screen name="historico" options={{ title: "Histórico" }} />
     </Stack>
   );
 }

@@ -3,6 +3,7 @@
 // uma cliente que a Nail já cadastrou. O papel fica em app_metadata, que só o servidor consegue alterar.
 // A senha é definida pela própria cliente depois do primeiro código (D8).
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { isPendingEmail } from "./format.ts";
 import { BookingError } from "./slots.ts";
 import type { Business, Client } from "./types.ts";
 
@@ -55,7 +56,8 @@ async function findOrCreateProfile(db: SupabaseClient, business: Business, email
   if (byPhone) {
     if (byPhone.user_id) throw new BookingError("Este telefone já está ligado a outra conta. Use o e-mail dessa conta ou fale com a Gabi.");
     // Só a Nail troca o e-mail de uma ficha (D5): ficha com outro e-mail não é assumida por aqui.
-    if (byPhone.email && byPhone.email !== email) {
+    // E-mail provisório conta como "sem e-mail": a cliente informa o verdadeiro e ele substitui o provisório.
+    if (byPhone.email && !isPendingEmail(byPhone.email) && byPhone.email !== email) {
       throw new BookingError("Este telefone já está cadastrado com outro e-mail. Use o e-mail cadastrado ou fale com a Gabi.");
     }
     const { data: updated, error: updateError } = await db

@@ -138,8 +138,10 @@ Deno.serve(
           .eq("active", true)
           .eq("archived", false)
           .order("name");
+        // Expediente: só para exibir no painel da cliente (a RLS de working_hours é da Nail).
+        const { data: hours } = await db.from("working_hours").select("weekday, start_time, end_time").eq("business_id", business.id);
         const { name, slug, address, phone, timezone, max_advance_days } = business;
-        return json({ business: { name, slug, address, phone, timezone, max_advance_days }, services: services ?? [] });
+        return json({ business: { name, slug, address, phone, timezone, max_advance_days }, services: services ?? [], hours: hours ?? [] });
       }
 
       const slots = await getAvailableSlots(db, business, input.serviceId, input.date);

@@ -16,7 +16,7 @@ export function howItWorksSteps(maxDays: number): Step[] {
       section: booking,
       icon: "calendarPlus",
       title: "Escolha serviço e horário",
-      text: `Aqui no painel, em "Agendar novo horário", ou pelo link da Gabi. Os horários abrem com até ${maxDays} dias de antecedência.`,
+      text: `Aqui no painel, em "Agendar", ou pelo link da Gabi. Os horários abrem com até ${maxDays} dias de antecedência. "Repetir" já traz o seu último serviço.`,
     },
     {
       section: booking,
@@ -46,13 +46,13 @@ export function howItWorksSteps(maxDays: number): Step[] {
       section: panel,
       icon: "clock",
       title: "Seu próximo horário",
-      text: "Fica no topo do painel, com atalhos para salvar no calendário e para falar com a Gabi sobre ele.",
+      text: "Fica no topo do painel, com a contagem regressiva, se já está confirmado e atalhos para o calendário, remarcar e como chegar.",
     },
     {
       section: panel,
       icon: "refresh",
-      title: "Hora da manutenção",
-      text: 'Quando chegar a data ideal de voltar, aparece um aviso com o botão "Agendar manutenção", com o serviço já escolhido.',
+      title: "Sua manutenção",
+      text: 'Uma barra mostra os dias até a data ideal de voltar. Perto dela, aparece o botão "Agendar manutenção", com o serviço já escolhido.',
     },
     {
       section: panel,
