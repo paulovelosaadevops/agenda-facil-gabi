@@ -186,7 +186,20 @@ A ordem evita deixar o agendamento fora do ar: primeiro o servidor passa a criar
   - O front **ainda não usa** `request-code` (Etapa 2). A ação `lookup` e o fluxo atual seguem iguais.
   - Testes: 7 casos novos de integração em `booking.integration.test.ts` (42/42 passando com `npm run test:integration`, banco local resetado) + teste ponta a ponta local de `request-code` com o código lido do Mailpit (6/6).
   - Para publicar (quando aprovado): `npx supabase db push` (migration) e `npx supabase functions deploy public-booking`. É aditivo: não muda nada para quem usa o app hoje.
-- [ ] Etapa 2 — Front sem autocadastro e cliente sem senha
+- [x] **Etapa 2** — Front sem autocadastro e cliente sem senha (05/11/2026). D7 feita como boas-vindas **da cliente**.
+  - Removidos: `src/app/cadastro.tsx`, `src/app/onboarding.tsx`, `src/components/client-signup.tsx`, `src/components/create-password.tsx`; `studioExists`/`business_exists` saíram do app ([auth.tsx](../src/lib/auth.tsx), [_layout.tsx](../src/app/_layout.tsx), [index.tsx](../src/app/index.tsx)).
+  - `/login` ([auth-form.tsx](../src/components/auth-form.tsx)): só a Nail, e-mail + senha; sem "Criar conta"; link "É cliente? Acessar meu painel" → `/entrar`.
+  - `/entrar`: só código. Usa `request-code` sem dados; sem cadastro → aviso para fazer o primeiro agendamento. Cliente cadastrada pela Nail ganha a conta no primeiro acesso (D3).
+  - Link `/agendar` ([booking-flow.tsx](../src/components/booking-flow.tsx)): "Continuar" chama `request-code`; quem já tem cadastro vai direto para o código; quem é nova preenche os dados (D2) e recebe o código. Sem senha; observações sempre visíveis.
+  - Painel da cliente: cartão de **boas-vindas** no primeiro acesso ("Entendi" grava `user_metadata.welcome_seen`) e item **"Como funciona o agendamento"** ([como-funciona.tsx](../src/app/cliente/como-funciona.tsx), [how-it-works.tsx](../src/components/how-it-works.tsx)).
+  - "Meus dados": telefone e e-mail só leitura (D5 no front; o bloqueio no banco é da Etapa 3); sem senha.
+  - A ação `lookup` do `public-booking` não é mais usada pelo app (sai na Etapa 3).
+  - Typecheck, lint e testes passando.
+- **Publicação Etapas 1+2 (05/11/2026), parcial:**
+  - ✅ Migration `20261105000000_login_servidor.sql` em produção (função executável só pelo `service_role`, conferido).
+  - ✅ Função `public-booking` em produção; `request-code` com e-mail desconhecido responde `needsProfile` sem criar conta (conferido).
+  - ⏳ **Site NÃO publicado**: o EAS CLI desta máquina estava logado na conta `paulovelosa.globant`, e o projeto é da conta `paulovelosaaa` ("Entity not authorized"). Falta: logar na conta certa e rodar o deploy (ver [web-deploy na memória] / `npx eas-cli@latest deploy --prod`, depois conferir o hash `entry-*.js`). O `dist/` já gerado com `.env.production` pode ser reaproveitado se o código não mudar.
+  - O site antigo continua funcionando com a função nova (a ação `lookup` e o cadastro por OTP ainda existem; só serão fechados na Etapa 3).
 - [ ] Etapa 3 — Fechar o cadastro no backend
 - [ ] Etapa 4 — Conta da Nail por script e contas existentes
 - [ ] Etapa 5 — Testes e publicação

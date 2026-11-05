@@ -6,28 +6,25 @@ import { fontFamily, Type, useTheme } from "@/lib/theme";
 import { Logo } from "./logo";
 import { Banner, Button, hairline, Text } from "./ui";
 
-export function AuthForm({ mode }: { mode: "login" | "signup" }) {
+/**
+ * Login da Nail (e-mail + senha). Não existe cadastro pelo app: a conta dela é criada por script
+ * (docs/mudanca-login.md). Clientes entram pelo /entrar, com código por e-mail.
+ */
+export function AuthForm() {
   const theme = useTheme();
-  const isLogin = mode === "login";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string>();
-  const [message, setMessage] = useState<string>();
   const [loading, setLoading] = useState(false);
 
   const submit = async () => {
     setError(undefined);
-    setMessage(undefined);
     if (!/^\S+@\S+\.\S+$/.test(email.trim())) return setError("Informe um e-mail válido.");
-    if (password.length < 8) return setError("A senha precisa ter pelo menos 8 caracteres.");
+    if (!password) return setError("Informe a sua senha.");
     setLoading(true);
-    const credentials = { email: email.trim(), password };
-    const { data, error: authError } = isLogin
-      ? await supabase.auth.signInWithPassword(credentials)
-      : await supabase.auth.signUp(credentials);
+    const { error: authError } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
     setLoading(false);
-    if (authError) return setError(isLogin ? "E-mail ou senha incorretos." : authError.message);
-    if (!isLogin && !data.session) setMessage("Enviamos um link de confirmação para o seu e-mail.");
+    if (authError) return setError("E-mail ou senha incorretos.");
     // Com sessão, o layout raiz redireciona sozinho (rotas protegidas).
   };
 
@@ -39,16 +36,9 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
         <View style={styles.inner}>
           <View style={{ alignItems: "center", marginBottom: 32 }}>
             <Logo width={250} />
-            {!isLogin && (
-              <Text variant="title2" style={{ marginTop: 24, textAlign: "center" }}>
-                Configurar o estúdio
-              </Text>
-            )}
-            {!isLogin && (
-              <Text color="label2" style={{ marginTop: 10, textAlign: "center" }}>
-                Primeiro acesso: esta será a conta da profissional.
-              </Text>
-            )}
+            <Text color="label2" style={{ marginTop: 16, textAlign: "center" }}>
+              Acesso do estúdio
+            </Text>
           </View>
 
           <View style={[styles.group, { backgroundColor: theme.surface }]}>
@@ -67,11 +57,11 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
             <View style={{ height: hairline, backgroundColor: theme.separator, marginLeft: 16 }} />
             <TextInput
               style={field}
-              placeholder={isLogin ? "Senha" : "Senha (mínimo 8 caracteres)"}
+              placeholder="Senha"
               placeholderTextColor={theme.label3}
               secureTextEntry
-              autoComplete={isLogin ? "current-password" : "new-password"}
-              textContentType={isLogin ? "password" : "newPassword"}
+              autoComplete="current-password"
+              textContentType="password"
               value={password}
               onChangeText={setPassword}
               returnKeyType="go"
@@ -80,16 +70,16 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
           </View>
 
           {error && <Banner>{error}</Banner>}
-          {message && <Banner tone="success">{message}</Banner>}
-          <Button title={isLogin ? "Entrar" : "Continuar"} onPress={submit} loading={loading} />
+          <Button title="Entrar" onPress={submit} loading={loading} />
 
+          {/* Sem "Criar conta": clientes entram no próprio painel com código por e-mail. */}
           <View style={{ flexDirection: "row", justifyContent: "center", marginTop: 24, gap: 4 }}>
             <Text variant="subhead" color="label2">
-              {isLogin ? "Ainda não tem conta?" : "Já tem conta?"}
+              É cliente?
             </Text>
-            <Link href={isLogin ? "/cadastro" : "/login"} replace>
+            <Link href="/entrar" replace>
               <Text variant="subhead" color="accent">
-                {isLogin ? "Criar conta" : "Entrar"}
+                Acessar meu painel
               </Text>
             </Link>
           </View>

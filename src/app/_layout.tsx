@@ -13,7 +13,7 @@ import { useTheme } from "@/lib/theme";
 void SplashScreen.preventAutoHideAsync();
 
 function RootStack() {
-  const { loading, session, role, studioExists } = useAuth();
+  const { loading, session, role } = useAuth();
   // Títulos em Cormorant Garamond (carregada em tempo de execução; funciona no Expo Go e na web).
   const [fontsLoaded, fontError] = useFonts({
     CormorantGaramond_500Medium,
@@ -32,19 +32,14 @@ function RootStack() {
   return (
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="index" />
-      {/* Link que a Gabi compartilha: sempre acessível; leva ao login/cadastro ou ao agendamento. */}
+      {/* Link que a Gabi compartilha: sempre acessível. A conta da cliente nasce no primeiro agendamento. */}
       <Stack.Screen name="agendar" />
       {/* Painel da cliente: entrada com e-mail e código (sem senha). */}
       <Stack.Screen name="entrar" />
 
+      {/* Login da Nail. Não existe cadastro pelo app (docs/mudanca-login.md). */}
       <Stack.Protected guard={!signedIn}>
         <Stack.Screen name="login" />
-        <Stack.Screen name="cadastro" />
-      </Stack.Protected>
-
-      {/* Primeira instalação: quem cria a conta configura o estúdio (a Gabi). */}
-      <Stack.Protected guard={signedIn && role === "none" && !studioExists}>
-        <Stack.Screen name="onboarding" />
       </Stack.Protected>
 
       <Stack.Protected guard={role === "owner"}>

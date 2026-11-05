@@ -15,8 +15,6 @@ interface AuthState {
   business: Business | null;
   /** Ficha da cliente logada. */
   client: Client | null;
-  /** Já existe estúdio configurado? (false só na primeira instalação.) */
-  studioExists: boolean;
   refresh: () => Promise<void>;
   signOut: () => Promise<void>;
 }
@@ -24,8 +22,7 @@ interface AuthState {
 const AuthContext = createContext<AuthState | null>(null);
 
 async function loadProfile(session: Session | null) {
-  const { data: exists } = await supabase.rpc("business_exists");
-  if (!session) return { role: "none" as Role, business: null, client: null, studioExists: Boolean(exists) };
+  if (!session) return { role: "none" as Role, business: null, client: null };
 
   // A RLS só devolve o estúdio para a dona e a ficha para a própria cliente.
   const [{ data: business }, { data: client }] = await Promise.all([
@@ -33,7 +30,7 @@ async function loadProfile(session: Session | null) {
     supabase.from("clients").select("*").eq("user_id", session.user.id).maybeSingle<Client>(),
   ]);
   const role: Role = business ? "owner" : client ? "client" : "none";
-  return { role, business: business ?? null, client: client ?? null, studioExists: Boolean(exists) };
+  return { role, business: business ?? null, client: client ?? null };
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -42,7 +39,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     role: "none",
     business: null,
     client: null,
-    studioExists: true,
   });
   const [loading, setLoading] = useState(true);
 
