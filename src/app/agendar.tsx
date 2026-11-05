@@ -1,17 +1,18 @@
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from "react-native";
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BookingFlow } from "@/components/booking-flow";
 import { Logo } from "@/components/logo";
-import { Banner, Loading } from "@/components/ui";
+import { Banner, Loading, Text } from "@/components/ui";
 import { useAuth } from "@/lib/auth";
 import { buildDays, useStudioInfo } from "@/lib/studio";
 import { useTheme } from "@/lib/theme";
 
 /**
- * Link público que a Gabi compartilha (WhatsApp, Instagram): agendamento passo a passo, sem senha.
- * No fim a cliente informa os dados obrigatórios e confirma com o código enviado ao e-mail; depois segue para o painel dela.
+ * Link público que a Gabi compartilha (WhatsApp, Instagram): agendamento passo a passo.
+ * Primeira vez: dados obrigatórios, código por e-mail e criação da senha; depois o painel. Quem já é cliente entra
+ * pelo "Já é minha cliente?" (e-mail + senha) ou com a senha no próprio fluxo (D8, docs/mudanca-login.md).
  */
 export default function PublicBooking() {
   const theme = useTheme();
@@ -35,6 +36,23 @@ export default function PublicBooking() {
         <View style={styles.brand}>
           <Logo width={190} />
         </View>
+
+        {/* D8: quem já é cliente entra no painel (e-mail + senha) e agenda por lá. */}
+        <Pressable
+          accessibilityRole="link"
+          onPress={() => router.push(servico ? { pathname: "/entrar", params: { servico } } : "/entrar")}
+          style={({ pressed }) => [styles.returning, { backgroundColor: theme.surface, opacity: pressed ? 0.7 : 1 }]}
+        >
+          <View style={{ flex: 1 }}>
+            <Text variant="headline">Já é minha cliente?</Text>
+            <Text variant="subhead" color="label2">
+              Entre no seu painel com e-mail e senha para agendar.
+            </Text>
+          </View>
+          <Text color="accent" style={{ fontWeight: "600" }}>
+            Entrar
+          </Text>
+        </Pressable>
 
         {error && <Banner>{error}</Banner>}
         {loading || !data ? (
@@ -63,4 +81,5 @@ export default function PublicBooking() {
 const styles = StyleSheet.create({
   content: { paddingHorizontal: 20, width: "100%", maxWidth: 520, alignSelf: "center" },
   brand: { alignItems: "center", marginBottom: 28 },
+  returning: { flexDirection: "row", alignItems: "center", gap: 12, borderRadius: 16, padding: 16, marginBottom: 24, borderCurve: "continuous" },
 });

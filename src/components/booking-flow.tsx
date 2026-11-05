@@ -9,6 +9,7 @@ import { callFunction, supabase } from "@/lib/supabase";
 import { Serif, useTheme } from "@/lib/theme";
 import { DayChips } from "./day-chips";
 import { Icon } from "./icon";
+import { SetPassword } from "./set-password";
 import { SlotChips } from "./slot-chips";
 import { Banner, Button, FormRow, HeaderButton, Input, Loading, Section, SwitchRow, tap, Text, TextAreaRow } from "./ui";
 
@@ -31,7 +32,8 @@ const PERIODS = [
 ];
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
-type Step = "service" | "time" | "details" | "code" | "done";
+// "password": primeiro agendamento — horário já reservado, a cliente cria a senha antes do painel (D8).
+type Step = "service" | "time" | "details" | "code" | "password" | "done";
 const STEPS: Step[] = ["service", "time", "details"];
 
 // Sem login: guarda os dados no aparelho para a cliente não digitar de novo na próxima vez.
@@ -57,7 +59,7 @@ function saveProfile(p: GuestProfile) {
 /** Barra de etapas: Serviço · Horário · Seus dados. */
 function Progress({ step, labels }: { step: Step; labels: string[] }) {
   const theme = useTheme();
-  const current = step === "code" ? 2 : STEPS.indexOf(step);
+  const current = step === "code" || step === "password" ? 2 : STEPS.indexOf(step);
   return (
     <View style={styles.progress}>
       {labels.map((label, i) => (
@@ -74,8 +76,9 @@ function Progress({ step, labels }: { step: Step; labels: string[] }) {
 
 /**
  * Agendamento em etapas: serviço → dia e horário → dados/confirmação → pronto.
- * Com `guest` (link público, sem conta): a cliente informa os dados obrigatórios e confirma com o código
- * enviado ao e-mail. O código só garante a autenticidade: a sessão dura até reservar o horário e é encerrada em seguida.
+ * Com `guest` (link público): primeira vez, a cliente informa os dados, confirma com o código enviado ao e-mail
+ * e cria a senha; quem já tem senha entra com ela ali mesmo (D8, docs/mudanca-login.md). A sessão fica salva
+ * no aparelho: na próxima visita ao link, ela já entra identificada.
  */
 export function BookingFlow({
   businessName,
@@ -125,13 +128,18 @@ export function BookingFlow({
   const [busy, setBusy] = useState(false);
   // Link público: primeiro o e-mail. Quem já tem cadastro só confirma com o código; quem é nova preenche os dados.
   // Sem senha e sem autocadastro: o servidor cria a conta (request-code). Ver docs/mudanca-login.md.
-  const [known, setKnown] = useState<"unknown" | "client" | "new">("unknown");
+  // "password": já é cliente com senha (D8) — entra com a senha ali mesmo.
+  const [known, setKnown] = useState<"unknown" | "client" | "new" | "password">("unknown");
+  const [password, setPassword] = useState("");
+  const [forgotPassword, setForgotPassword] = useState(false);
   const setField = (key: keyof GuestProfile) => (v: string | boolean) => setProfile((p) => ({ ...p, [key]: v }));
   const email = profile.email.trim().toLowerCase();
 
   const changeEmail = () => {
     setError(undefined);
     setKnown("unknown");
+    setPassword("");
+    setForgotPassword(false);
   };
 
   const loadSlots = async (serviceId: string, date: string) => {
@@ -168,6 +176,8 @@ export function BookingFlow({
   const waitSeconds = Math.max(0, Math.ceil((resendAt - now) / 1000));
 
   const back = () => {
+    // Criando a senha, o horário já foi reservado: não há passo anterior.
+    if (step === "password") return;
     setError(undefined);
     if (step === "details" && known !== "unknown") return changeEmail();
     setStep(step === "code" ? "details" : step === "details" ? "time" : "service");
@@ -195,7 +205,6 @@ export function BookingFlow({
       profile: newProfile,
     });
     setCalendarUrl(res.calendarUrl);
-    setStep("done");
   };
 
   const handleBookingError = (err: unknown) => {
@@ -214,6 +223,7 @@ export function BookingFlow({
     setBusy(true);
     try {
       await book();
+      setStep("done");
     } catch (err) {
       handleBookingError(err);
     } finally {
@@ -222,10 +232,11 @@ export function BookingFlow({
   };
 
   /**
-   * Link público: o servidor garante a conta e envia o código. Sem dados (botão "Continuar"), quem já tem
-   * cadastro recebe o código direto; quem não tem volta com `needsProfile` e a tela pede os dados.
+   * Link público: o servidor garante a conta. Sem dados (botão "Continuar"): quem tem senha volta com
+   * `hasPassword` (entra com a senha aqui mesmo, sem perder serviço e horário); quem tem cadastro sem senha
+   * recebe o código; quem não tem volta com `needsProfile` e a tela pede os dados. `forgot`: código mesmo com senha.
    */
-  const sendCode = async () => {
+  const sendCode = async (forgot = false) => {
     setError(undefined);
     if (!/^\S+@\S+\.\S+$/.test(email)) return setError("Informe um e-mail válido.");
     const asNew = known === "new";
@@ -233,15 +244,17 @@ export function BookingFlow({
     if (invalid) return setError(invalid);
     setBusy(true);
     try {
-      const res = await callFunction<{ needsProfile: boolean }>("public-booking", {
+      const res = await callFunction<{ needsProfile: boolean; hasPassword?: boolean }>("public-booking", {
         action: "request-code",
         email,
+        forgot,
         profile: asNew
           ? { name: profile.name.trim(), phone: profile.phone, whatsapp: profile.whatsapp, instagram: profile.instagram.trim().replace(/^@?/, "@") }
           : undefined,
       });
       saveProfile(profile);
       if (res.needsProfile) return setKnown("new");
+      if (res.hasPassword) return setKnown("password");
       if (!asNew) setKnown("client");
       setCode("");
       setResendAt(Date.now() + 60_000);
@@ -254,24 +267,53 @@ export function BookingFlow({
     }
   };
 
-  /** Confere o código e reserva. */
+  /** Confere o código e reserva. Sem senha ainda (primeiro agendamento ou esqueceu): cria a senha antes do painel. */
   const confirmCode = async () => {
     setError(undefined);
     if (!/^\d{6}$/.test(code.trim())) return setError("Digite os 6 números do código.");
     setBusy(true);
     onVerifyStart?.();
-    const { error: e } = await supabase.auth.verifyOtp({ email, token: code.trim(), type: "email" });
+    const { data, error: e } = await supabase.auth.verifyOtp({ email, token: code.trim(), type: "email" });
     if (e) {
       setBusy(false);
       return setError("Código inválido ou expirado. Confira o e-mail ou peça outro código.");
     }
     try {
       await book();
+      // Entrou pelo código: primeira vez (sem senha) ou "esqueci a senha" — em ambos, define a senha agora.
+      setStep(data.user?.user_metadata?.has_password && !forgotPassword ? "done" : "password");
     } catch (err) {
       handleBookingError(err);
     } finally {
       setBusy(false);
     }
+  };
+
+  /** Já é cliente com senha: entra e conclui o agendamento com o serviço e o horário escolhidos. */
+  const confirmPassword = async () => {
+    setError(undefined);
+    if (!password) return setError("Digite sua senha.");
+    setBusy(true);
+    onVerifyStart?.();
+    const { error: e } = await supabase.auth.signInWithPassword({ email, password });
+    if (e) {
+      setBusy(false);
+      return setError("Senha incorreta. Tente de novo ou use “Esqueci a senha”.");
+    }
+    try {
+      await book();
+      setStep("done");
+    } catch (err) {
+      handleBookingError(err);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /** Esqueceu a senha no meio do agendamento: código por e-mail e, depois de reservar, senha nova. */
+  const forgot = () => {
+    setForgotPassword(true);
+    void sendCode(true);
   };
 
   if (step === "done" && service && slot) {
@@ -369,10 +411,10 @@ export function BookingFlow({
         {guest && (
           <Pressable
             onPress={back}
-            disabled={step === "service"}
+            disabled={step === "service" || step === "password"}
             accessibilityLabel="Voltar"
             hitSlop={8}
-            style={[styles.backButton, { backgroundColor: theme.surface, opacity: step === "service" ? 0 : 1 }]}
+            style={[styles.backButton, { backgroundColor: theme.surface, opacity: step === "service" || step === "password" ? 0 : 1 }]}
           >
             <Icon name="chevronLeft" size={18} color={theme.accent} weight="semibold" />
           </Pressable>
@@ -507,10 +549,12 @@ export function BookingFlow({
               header="Seu e-mail"
               footer={
                 known === "unknown"
-                  ? "Se você já é cliente, enviamos o código direto, sem preencher nada. Não usamos senha."
-                  : known === "client"
-                    ? "Que bom te ver de novo! Seus dados já estão com a Gabi."
-                    : "Primeira vez por aqui: preencha seus dados abaixo."
+                  ? "Se você já é cliente, não precisa preencher seus dados de novo."
+                  : known === "password"
+                    ? "Você já é cliente! Entre com a sua senha para concluir: seu serviço e horário continuam escolhidos."
+                    : known === "client"
+                      ? "Que bom te ver de novo! Seus dados já estão com a Gabi."
+                      : "Primeira vez por aqui: preencha seus dados abaixo."
               }
             >
               {known === "unknown" ? (
@@ -523,7 +567,7 @@ export function BookingFlow({
                     autoCapitalize="none"
                     autoComplete="email"
                     autoFocus={!profile.email}
-                    onSubmitEditing={sendCode}
+                    onSubmitEditing={() => void sendCode()}
                     returnKeyType="next"
                   />
                 </FormRow>
@@ -537,6 +581,20 @@ export function BookingFlow({
                       Trocar
                     </Text>
                   </Pressable>
+                </FormRow>
+              )}
+              {known === "password" && (
+                <FormRow label="Senha">
+                  <Input
+                    value={password}
+                    onChangeText={setPassword}
+                    placeholder="Sua senha"
+                    secureTextEntry
+                    autoComplete="current-password"
+                    textContentType="password"
+                    autoFocus
+                    onSubmitEditing={confirmPassword}
+                  />
                 </FormRow>
               )}
             </Section>
@@ -561,10 +619,19 @@ export function BookingFlow({
           </Section>
           {error && <Banner>{error}</Banner>}
           {guest && known === "unknown" ? (
-            <Button title="Continuar" onPress={sendCode} loading={busy} disabled={!email} />
+            <Button title="Continuar" onPress={() => void sendCode()} loading={busy} disabled={!email} />
+          ) : guest && known === "password" ? (
+            <>
+              <Button title="Entrar e agendar" onPress={confirmPassword} loading={busy} disabled={!password} />
+              <Pressable hitSlop={8} onPress={forgot} disabled={busy} style={{ alignSelf: "center", marginTop: 14 }}>
+                <Text variant="subhead" color="accent">
+                  Esqueci a senha
+                </Text>
+              </Pressable>
+            </>
           ) : guest ? (
             <>
-              <Button title="Enviar código por e-mail" icon="message" onPress={sendCode} loading={busy} />
+              <Button title="Enviar código por e-mail" icon="message" onPress={() => void sendCode()} loading={busy} />
               <Text variant="footnote" color="label2" style={{ textAlign: "center", marginTop: 10 }}>
                 Para sua segurança, o horário só é reservado depois que você confirmar o código.
               </Text>
@@ -608,7 +675,7 @@ export function BookingFlow({
                 Trocar e-mail
               </Text>
             </Pressable>
-            <Pressable hitSlop={8} disabled={waitSeconds > 0 || busy} onPress={sendCode}>
+            <Pressable hitSlop={8} disabled={waitSeconds > 0 || busy} onPress={() => void sendCode(forgotPassword)}>
               <Text variant="subhead" color={waitSeconds > 0 ? "label3" : "accent"}>
                 {waitSeconds > 0 ? `Reenviar em ${waitSeconds}s` : "Reenviar código"}
               </Text>
@@ -619,12 +686,30 @@ export function BookingFlow({
           </Text>
         </>
       )}
+
+      {/* D8: o horário já está reservado; a senha é criada antes de abrir o painel. */}
+      {step === "password" && service && slot && (
+        <>
+          <View style={[styles.reserved, { backgroundColor: theme.surface }]}>
+            <Icon name="check" size={18} color={theme.accent} />
+            <Text variant="subhead" style={{ flex: 1 }}>
+              Horário reservado: {service.name}, {formatInTz(slot, "EEEE, d 'de' MMMM 'às' HH:mm", timeZone)}.
+            </Text>
+          </View>
+          <Text variant="title1">{forgotPassword ? "Crie uma nova senha" : "Crie sua senha"}</Text>
+          <Text color="label2" style={{ marginTop: 4, marginBottom: 20 }}>
+            É com ela e o seu e-mail que você entra no seu painel para acompanhar e fazer novos agendamentos.
+          </Text>
+          <SetPassword buttonTitle="Salvar e continuar" onSaved={() => setStep("done")} />
+        </>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   topRow: { flexDirection: "row", alignItems: "flex-start", gap: 12, marginBottom: 24 },
+  reserved: { flexDirection: "row", alignItems: "center", gap: 10, borderRadius: 12, padding: 12, marginBottom: 20, borderCurve: "continuous" },
   backButton: { width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center", marginTop: -6 },
   progress: { flexDirection: "row", gap: 8 },
   progressBar: { height: 3, borderRadius: 2 },

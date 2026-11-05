@@ -1,7 +1,8 @@
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import { Pressable } from "react-native";
+import { Pressable, View } from "react-native";
 import { ScreenHeader } from "@/components/screen-header";
+import { SetPassword } from "@/components/set-password";
 import { Banner, FormRow, HeaderButton, Input, Row, Screen, Section, SwitchRow, Text } from "@/components/ui";
 import { formatPhone } from "@shared/format.ts";
 import { useAuth, useClient } from "@/lib/auth";
@@ -22,6 +23,7 @@ export default function ClientProfile() {
   const [instagram, setInstagram] = useState(client.instagram);
   const [error, setError] = useState<string>();
   const [saving, setSaving] = useState(false);
+  const [passwordSaved, setPasswordSaved] = useState(false);
 
   const save = async () => {
     if (name.trim().length < 2) return setError("Informe seu nome.");
@@ -54,10 +56,17 @@ export default function ClientProfile() {
           <Input value={instagram} onChangeText={setInstagram} autoCapitalize="none" autoCorrect={false} />
         </FormRow>
       </Section>
-      <Section footer="Você entra com o e-mail e um código, sem senha. Para trocar o telefone ou o e-mail, fale com a Gabi.">
+      <Section footer="Para trocar o telefone ou o e-mail, fale com a Gabi.">
         <Row title="Telefone" detail={formatPhone(client.phone)} />
         <Row title="E-mail" detail={client.email ?? ""} />
       </Section>
+      <Text variant="overline" color="label2" style={{ marginHorizontal: 16, marginBottom: 6 }}>
+        TROCAR SENHA
+      </Text>
+      <View style={{ marginBottom: 28 }}>
+        <SetPassword buttonTitle="Salvar nova senha" onSaved={() => setPasswordSaved(true)} />
+        {passwordSaved && <Banner tone="success">Senha alterada.</Banner>}
+      </View>
       <Section>
         <Pressable
           onPress={signOut}

@@ -1,6 +1,7 @@
-// Conta de login da cliente, decidida no servidor (docs/mudanca-login.md, Etapa 1).
+// Conta de login da cliente, decidida no servidor (docs/mudanca-login.md, Etapa 1 e D8).
 // Ninguém se cadastra sozinha: a conta nasce no primeiro agendamento (com os dados) ou no primeiro acesso de
 // uma cliente que a Nail já cadastrou. O papel fica em app_metadata, que só o servidor consegue alterar.
+// A senha é definida pela própria cliente depois do primeiro código (D8).
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { BookingError } from "./slots.ts";
 import type { Business, Client } from "./types.ts";
@@ -13,12 +14,15 @@ export interface NewClientData {
   instagram: string;
 }
 
-export type EnsureResult = { needsProfile: true } | { needsProfile: false; userId: string; client: Client };
+export type EnsureResult =
+  | { needsProfile: true }
+  /** `hasPassword`: a conta já tem senha (D8) — o link pede a senha em vez de enviar o código. */
+  | { needsProfile: false; userId: string; client: Client; hasPassword: boolean };
 
-async function authUserIdByEmail(db: SupabaseClient, email: string): Promise<string | null> {
-  const { data, error } = await db.rpc("auth_user_id_by_email", { p_email: email });
+async function authUserByEmail(db: SupabaseClient, email: string): Promise<{ id: string; has_password: boolean } | null> {
+  const { data, error } = await db.rpc("auth_user_by_email", { p_email: email });
   if (error) throw error;
-  return (data as string | null) ?? null;
+  return (data as { id: string; has_password: boolean }[] | null)?.[0] ?? null;
 }
 
 async function setClientRole(db: SupabaseClient, userId: string) {
@@ -79,7 +83,9 @@ async function findOrCreateProfile(db: SupabaseClient, business: Business, email
  */
 export async function ensureClientAccount(db: SupabaseClient, business: Business, rawEmail: string, data?: NewClientData): Promise<EnsureResult> {
   const email = rawEmail.trim().toLowerCase();
-  const existingUserId = await authUserIdByEmail(db, email);
+  const existing = await authUserByEmail(db, email);
+  const existingUserId = existing?.id ?? null;
+  const hasPassword = Boolean(existing?.has_password);
   if (existingUserId && existingUserId === business.owner_id) {
     throw new BookingError("Este e-mail é da conta do estúdio. Use outro e-mail para agendar.");
   }
@@ -90,7 +96,7 @@ export async function ensureClientAccount(db: SupabaseClient, business: Business
     if (error) throw error;
     if (linked) {
       await setClientRole(db, existingUserId);
-      return { needsProfile: false, userId: existingUserId, client: linked };
+      return { needsProfile: false, userId: existingUserId, client: linked, hasPassword };
     }
   }
 
@@ -121,5 +127,5 @@ export async function ensureClientAccount(db: SupabaseClient, business: Business
     throw new BookingError("Não foi possível ligar sua conta. Tente de novo.");
   }
   if (!created) await setClientRole(db, userId);
-  return { needsProfile: false, userId, client: linked };
+  return { needsProfile: false, userId, client: linked, hasPassword };
 }

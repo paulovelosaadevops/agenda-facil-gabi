@@ -33,9 +33,12 @@ const Request = z.discriminatedUnion("action", [
   // O e-mail já é de uma cliente com conta? Decide se o link pede só o código ou também os dados.
   z.object({ action: z.literal("lookup"), email: z.string().trim().toLowerCase().email() }),
   // Login sem autocadastro: o servidor garante a conta (cria/liga à ficha) e envia o código por e-mail.
+  // Conta com senha (D8): não envia código e responde `hasPassword` (o app pede a senha), salvo `forgot`.
   z.object({
     action: z.literal("request-code"),
     email: z.string().trim().toLowerCase().email(),
+    /** "Primeiro acesso ou esqueci a senha": envia o código mesmo se a conta já tiver senha. */
+    forgot: z.boolean().optional(),
     // Primeira vez: dados obrigatórios (D2). Quem já tem ficha (inclusive cadastrada pela Nail) não precisa.
     profile: z
       .object({
@@ -94,6 +97,7 @@ Deno.serve(
         }
         const result = await ensureClientAccount(db, await loadStudio(db), input.email, profile);
         if (result.needsProfile) return json({ needsProfile: true });
+        if (result.hasPassword && !input.forgot) return json({ needsProfile: false, hasPassword: true });
 
         // A conta já existe (criada acima): o código nunca cria conta (shouldCreateUser: false).
         const { error } = await publicClient().auth.signInWithOtp({ email: input.email, options: { shouldCreateUser: false } });

@@ -232,9 +232,16 @@ describe.runIf(run)("regras do estúdio com banco real", () => {
       expect(user.app_metadata.role).toBe("client");
       expect(user.email_confirmed_at).toBeTruthy();
 
-      // Cliente que volta: mesma ficha e conta, sem dados.
+      // Cliente que volta: mesma ficha e conta, sem dados. Ainda sem senha.
       const again = await ensureClientAccount(admin, business, email);
       expect(again.needsProfile === false && again.client.id).toBe(r.client.id);
+      expect(again.needsProfile === false && again.hasPassword).toBe(false);
+
+      // D8: depois de criar a senha, o servidor sabe (o link pede a senha em vez do código).
+      // Como o app faz (SetPassword): senha e marca has_password na mesma chamada.
+      await admin.auth.admin.updateUserById(r.userId, { password: "senha-da-cliente-1", user_metadata: { has_password: true } });
+      const withPassword = await ensureClientAccount(admin, business, email);
+      expect(withPassword.needsProfile === false && withPassword.hasPassword).toBe(true);
     });
 
     it("cliente cadastrada pela Nail: primeiro acesso só com o e-mail liga a conta à ficha", async () => {

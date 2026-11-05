@@ -166,7 +166,8 @@ A ordem evita deixar o agendamento fora do ar: primeiro o servidor passa a criar
 
 | # | Decisão | Status |
 |---|---|---|
-| D1 | Método de login da cliente | **Decidido (05/11):** código de 6 dígitos por e-mail |
+| D1 | Método de login da cliente | ~~código de 6 dígitos por e-mail~~ **Substituída pela D8 (05/11).** |
+| D8 | Login da cliente (substitui D1) | **Decidido (05/11):** cliente **tem senha**, definida no **primeiro agendamento** (depois de confirmar o código por e-mail e antes de acessar o painel). Login com e-mail + senha. O código por e-mail fica só para o **primeiro agendamento** e para **primeiro acesso / esqueci a senha**. No `/agendar`: "Já é minha cliente? Entre no seu painel" no topo; quem já tem senha e segue pelo fluxo de primeira vez entra com a senha ali mesmo, **sem perder serviço e horário**, e conclui o agendamento. Ao final, painel com boas-vindas e passo a passo do painel. *(O requisito original "login sem senha" foi revisto pelo usuário.)* |
 | D2 | Dados obrigatórios no primeiro agendamento | **Decidido (05/11):** todos obrigatórios — nome, telefone, WhatsApp (sim/não), Instagram e e-mail |
 | D3 | Cliente cadastrada pela Nail: quando nasce a conta de login | **Decidido (05/11):** no **primeiro acesso** (não no cadastro pelo painel) |
 | D4 | Login da Nail | **Decidido (05/11):** continua com e-mail + senha |
@@ -201,6 +202,16 @@ A ordem evita deixar o agendamento fora do ar: primeiro o servidor passa a criar
   - ✅ Site publicado em 05/11/2026 (bundle `entry-fc053bad`), depois de logar o EAS CLI no usuário **`paulovelosaaa`** (e-mail Yahoo), dono do projeto. Contas `paulovelosa` (iCloud) e `paulovelosa.globant` **não** têm acesso.
   - ⏳ Aguardando os testes do usuário (roteiro de cliente e Nail entregue na conversa) antes da Etapa 3.
   - O cadastro **ainda está aberto no backend** (Supabase Auth `enable_signup`, gatilho `handle_new_client`, ação `lookup`): fechar é a Etapa 3.
+- [x] **Etapa 2b** — Senha da cliente (D8), 05/11/2026.
+  - Migration [20261105010000_senha_cliente.sql](../supabase/migrations/20261105010000_senha_cliente.sql): `auth_user_by_email()` → `(id, has_password)`, só `service_role`. **"Tem senha" vem da marca `user_metadata.has_password`**, gravada pelo app junto com a senha: o `encrypted_password` não serve (o Auth grava senha aleatória em contas criadas pela API de admin).
+  - `ensureClientAccount` devolve `hasPassword`; `request-code` responde `{ hasPassword: true }` sem enviar código quando a conta tem senha, salvo `forgot: true`.
+  - [set-password.tsx](../src/components/set-password.tsx): `SetPassword` (senha + repetir, mín. 8, `updateUser({ password, data: { has_password: true } })`) e `useHasPassword()`.
+  - `/agendar`: cartão "Já é minha cliente?" no topo → `/entrar` (leva o `servico`); fluxo: e-mail → (nova: dados → código → **reserva** → passo **"Crie sua senha"** → pronto) / (com senha: senha ali mesmo + "Esqueci a senha", sem perder serviço e horário) / (cadastro sem senha: código → reserva → cria senha).
+  - `/entrar`: e-mail + senha; "Primeiro acesso ou esqueci a senha" → código (`forgot`) → "Crie sua senha" → painel (ou `/cliente/agendar?servico=`).
+  - Painel: [cliente/_layout.tsx](../src/app/cliente/_layout.tsx) exige criar a senha antes de abrir, se ainda não tiver. "Meus dados" ganhou "Trocar senha".
+  - Boas-vindas e "Como funciona" ([how-it-works.tsx](../src/components/how-it-works.tsx)) com duas partes: **o agendamento** e **o seu painel** (passo a passo).
+  - Testes: integração 42/42 (caso novo de `hasPassword`); ponta a ponta local 6/6 (primeira vez com código, cria senha, volta pedindo senha sem código, login com senha, esqueci a senha).
+  - Publicação: migration → `public-booking` → site.
 - [ ] Etapa 3 — Fechar o cadastro no backend
 - [ ] Etapa 4 — Conta da Nail por script e contas existentes
 - [ ] Etapa 5 — Testes e publicação
