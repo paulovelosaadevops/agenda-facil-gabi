@@ -214,6 +214,7 @@ A ordem evita deixar o agendamento fora do ar: primeiro o servidor passa a criar
   - ✅ **Publicada em 05/11/2026**: migration (só `service_role`, conferido) → `public-booking` (e-mail desconhecido → `needsProfile`, conferido) → site (bundle `entry-f1c04ab6`).
   - Ajustes publicados em 05/11/2026 (site `entry-b8efd0ba` + funções `public-booking`, `panel`, `whatsapp-webhook`): boas-vindas e "Como funciona" viraram **popup passo a passo** (`HowItWorksModal`; a tela `cliente/como-funciona` saiu); e, fora do escopo de login, a regra de pés passou a valer para **combos que incluem pés** (`requiresFeet`).
   - Conta, ficha e agendamento de teste do `paulo.velosa@yahoo.com.br` apagados a pedido (backup em `backups/2026-11-05-paulo-yahoo/`), para refazer o teste como cliente nova pelo celular.
+  - Publicado em 05/11/2026 (site `entry-aa5cb4f4`): "Já é minha cliente?" virou **popup ao abrir o `/agendar`** ([returning-client-modal.tsx](../src/components/returning-client-modal.tsx)), e os popups ganharam **fundo desfocado** ([modal-backdrop.tsx](../src/components/modal-backdrop.tsx), `expo-blur`; no Android nativo só escurece). Aprovado pelo usuário.
   - ⏳ Aguardando os testes do usuário no site oficial. Depois: **Etapa 3**.
 - [ ] Etapa 3 — Fechar o cadastro no backend
 - [ ] Etapa 4 — Conta da Nail por script e contas existentes
