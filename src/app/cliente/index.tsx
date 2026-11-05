@@ -1,7 +1,7 @@
 import { Linking, Pressable, StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import { HowItWorks } from "@/components/how-it-works";
+import { HowItWorksModal } from "@/components/how-it-works";
 import { Icon, type IconName } from "@/components/icon";
 import { ScreenHeader } from "@/components/screen-header";
 import { STATUS_LABEL, statusColor } from "@/components/status";
@@ -40,6 +40,7 @@ export default function ClientHome() {
   const { data: studio } = useStudioInfo();
   // Boas-vindas do primeiro acesso: some depois do "Entendi" (marcado na própria conta, vale em qualquer aparelho).
   const [welcomeDismissed, setWelcomeDismissed] = useState(false);
+  const [howItWorksOpen, setHowItWorksOpen] = useState(false);
   const showWelcome = !welcomeDismissed && !session?.user.user_metadata?.welcome_seen;
   const dismissWelcome = () => {
     setWelcomeDismissed(true);
@@ -88,18 +89,13 @@ export default function ClientHome() {
         right={<HeaderButton icon="person" accessibilityLabel="Meus dados" onPress={() => router.push("/cliente/perfil")} />}
       />
       {error && <Banner>{error}</Banner>}
-      {showWelcome && (
-        <View style={[styles.welcome, { backgroundColor: theme.surface }]}>
-          <Text variant="title3" style={{ marginBottom: 4 }}>
-            Boas-vindas, {first}!
-          </Text>
-          <Text variant="subhead" color="label2" style={{ marginBottom: 16 }}>
-            Veja como funciona o seu agendamento com a {Brand.name}:
-          </Text>
-          <HowItWorks maxDays={studio?.business.max_advance_days ?? 14} />
-          <Button title="Entendi" variant="tinted" style={{ marginTop: 18 }} onPress={dismissWelcome} />
-        </View>
-      )}
+      {/* Primeiro acesso: boas-vindas + passo a passo. Depois, o mesmo popup abre em "Como funciona". */}
+      <HowItWorksModal
+        visible={showWelcome || howItWorksOpen}
+        maxDays={studio?.business.max_advance_days ?? 14}
+        welcomeName={showWelcome ? first : undefined}
+        onClose={() => (showWelcome ? dismissWelcome() : setHowItWorksOpen(false))}
+      />
 
       {loading && !data ? (
         <Loading />
@@ -201,7 +197,7 @@ export default function ClientHome() {
 
           <Section footer="Para remarcar ou cancelar, fale com a Gabi pelo WhatsApp.">
             {phone && <Row title="Falar com a Gabi" chevron onPress={() => talkToGabi(`Olá, Gabi! Aqui é a ${first}.`)} />}
-            <Row title="Como funciona o agendamento" chevron onPress={() => router.push("/cliente/como-funciona")} />
+            <Row title="Como funciona o agendamento" chevron onPress={() => setHowItWorksOpen(true)} />
             <Row title="Meus dados" chevron onPress={() => router.push("/cliente/perfil")} />
             <Row title="Sair" tone="destructive" onPress={signOut} />
           </Section>
@@ -220,5 +216,4 @@ const styles = StyleSheet.create({
   empty: { borderRadius: 18, padding: 20, marginBottom: 14, borderCurve: "continuous" },
   maintenance: { borderRadius: 16, borderLeftWidth: 3, padding: 16, marginBottom: 14, borderCurve: "continuous" },
   maintenanceHead: { flexDirection: "row", alignItems: "center", gap: 8 },
-  welcome: { borderRadius: 18, padding: 20, marginBottom: 20, borderCurve: "continuous" },
 });
