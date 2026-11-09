@@ -7,8 +7,8 @@ import { Icon, type IconName } from "@/components/icon";
 import { ScreenHeader } from "@/components/screen-header";
 import { Banner, Button, Loading, Row, RowIcon, Screen, Section, Text } from "@/components/ui";
 import { parseDateKey, toDateKey } from "@shared/availability.ts";
-import { formatInTz, summarizeWorkingHours, whatsappLink } from "@shared/format.ts";
-import type { AppointmentWithRefs, MaintenanceAlert } from "@shared/types.ts";
+import { formatInTz, formatMoney, summarizeWorkingHours, whatsappLink } from "@shared/format.ts";
+import { paymentStatus, type AppointmentWithRefs, type MaintenanceAlert } from "@shared/types.ts";
 import { useAuth, useClient } from "@/lib/auth";
 import { Brand } from "@/lib/brand";
 import { openCalendar } from "@/lib/ics";
@@ -240,6 +240,14 @@ export default function ClientHome() {
                   {next.status === "confirmed" ? "Confirmado" : "Aguardando confirmação"}
                 </Text>
               </View>
+              {/* Pagamento antecipado registrado pela Gabi. */}
+              {next.paid_cents > 0 && (
+                <Text variant="footnote" style={{ color: theme.onAccent, opacity: 0.85, marginTop: 8 }}>
+                  {paymentStatus(next).label === "Pago"
+                    ? "Já está pago ✓"
+                    : `Sinal pago: ${formatMoney(next.paid_cents)} · restante ${formatMoney(paymentStatus(next).remaining)} no dia`}
+                </Text>
+              )}
               <View style={[styles.cardActions, { borderTopColor: "rgba(247,243,238,0.14)" }]}>
                 <CardAction icon="calendarPlus" label="Calendário" onPress={() => void addToCalendar(next.id)} />
                 {phone && (

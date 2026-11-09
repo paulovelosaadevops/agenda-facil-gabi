@@ -115,6 +115,32 @@ export interface Appointment {
   price_cents: number;
   notes: string;
   reminder_sent_at: string | null;
+  /** Total já pago antecipadamente (soma dos lançamentos em payments; mantido pelo banco). */
+  paid_cents: number;
+}
+
+export type PaymentMethod = "pix" | "dinheiro" | "cartao" | "outro";
+export type PaymentKind = "sinal" | "restante" | "integral" | "devolucao";
+
+/** Recebimento registrado pela Gabi (devolução de sinal = valor negativo). */
+export interface Payment {
+  id: string;
+  business_id: string;
+  appointment_id: string;
+  amount_cents: number;
+  method: PaymentMethod;
+  kind: PaymentKind;
+  paid_at: string;
+}
+
+export const PAYMENT_METHOD_LABEL: Record<PaymentMethod, string> = { pix: "Pix", dinheiro: "Dinheiro", cartao: "Cartão", outro: "Outro" };
+export const PAYMENT_KIND_LABEL: Record<PaymentKind, string> = { sinal: "Sinal", restante: "Restante", integral: "Pagamento integral", devolucao: "Sinal devolvido" };
+
+/** Situação do pagamento de um agendamento: nada pago, sinal (parte) ou pago. */
+export function paymentStatus(appt: { price_cents: number; paid_cents: number }): { label: "Não pago" | "Sinal" | "Pago"; remaining: number } {
+  const remaining = Math.max(0, appt.price_cents - appt.paid_cents);
+  if (appt.paid_cents <= 0) return { label: "Não pago", remaining };
+  return { label: remaining === 0 ? "Pago" : "Sinal", remaining };
 }
 
 export type AppointmentWithRefs = Appointment & {

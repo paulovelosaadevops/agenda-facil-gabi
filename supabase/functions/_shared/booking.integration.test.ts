@@ -242,6 +242,29 @@ describe.runIf(run)("regras do estúdio com banco real", () => {
     await expect(updateBooking(admin, { business, appointmentId: other.appointment.id, serviceId, startsAt: slots[6] })).rejects.toThrow(/pendentes ou confirmados/);
   });
 
+  it("pagamento antecipado: sinal, restante e devolução somam no total pago; só a Gabi vê os lançamentos", async () => {
+    const client = await upsertClientProfile(admin, business.id, profile("5511933330003", "Sinal"));
+    const day = toDateKey(addDays(new Date(), 15), business.timezone);
+    const [slot] = await getAvailableSlots(admin, business, serviceId, day);
+    const { appointment } = await createBooking(admin, { business, serviceId, clientId: client.id, startsAt: slot, source: "panel", enforceRules: false, notifyClient: false });
+    const paid = async () => (await admin.from("appointments").select("paid_cents").eq("id", appointment.id).single()).data!.paid_cents;
+    const pay = (amount_cents: number, kind: string) =>
+      owner.from("payments").insert({ business_id: business.id, appointment_id: appointment.id, amount_cents, kind, method: "pix" });
+
+    expect(await paid()).toBe(0);
+    expect((await pay(3000, "sinal")).error).toBeNull(); // a Gabi registra (RLS)
+    expect(await paid()).toBe(3000);
+    await pay(6000, "restante");
+    expect(await paid()).toBe(9000); // preço do "Gel": pago
+    await pay(-9000, "devolucao");
+    expect(await paid()).toBe(0);
+
+    // Conta sem vínculo com o estúdio não vê nem registra pagamentos.
+    const intruder = await signUp();
+    expect((await intruder.from("payments").select("id")).data).toEqual([]);
+    expect((await intruder.from("payments").insert({ business_id: business.id, appointment_id: appointment.id, amount_cents: 100 })).error).not.toBeNull();
+  });
+
   it("combo que inclui pés (sem a marca no combo) também é só para clientes liberadas", async () => {
     const { data: pe } = await owner
       .from("services")

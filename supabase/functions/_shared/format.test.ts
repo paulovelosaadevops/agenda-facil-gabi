@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { formatPhone, isPendingEmail, normalizePhone, parseMoney, summarizeWorkingHours } from "./format.ts";
+import { paymentStatus } from "./types.ts";
 
 describe("summarizeWorkingHours", () => {
   const day = (weekday: number, start_time: string, end_time: string) => ({ weekday, start_time, end_time });
@@ -19,6 +20,15 @@ describe("summarizeWorkingHours", () => {
 
   it("sem expediente: lista vazia", () => {
     expect(summarizeWorkingHours([])).toEqual([]);
+  });
+});
+
+describe("paymentStatus", () => {
+  it("nada pago, sinal e pago (inclusive pago a mais)", () => {
+    expect(paymentStatus({ price_cents: 18000, paid_cents: 0 })).toEqual({ label: "Não pago", remaining: 18000 });
+    expect(paymentStatus({ price_cents: 18000, paid_cents: 5000 })).toEqual({ label: "Sinal", remaining: 13000 });
+    expect(paymentStatus({ price_cents: 18000, paid_cents: 18000 })).toEqual({ label: "Pago", remaining: 0 });
+    expect(paymentStatus({ price_cents: 15000, paid_cents: 18000 })).toEqual({ label: "Pago", remaining: 0 }); // valor do serviço baixou depois
   });
 });
 

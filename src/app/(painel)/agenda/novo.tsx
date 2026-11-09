@@ -4,12 +4,14 @@ import { useWindowDimensions, View } from "react-native";
 import { ClientPicker, NEW_CLIENT } from "@/components/client-picker";
 import { DateField } from "@/components/date-calendar";
 import { GroupedPickerRow } from "@/components/grouped-picker";
+import { PickerRow } from "@/components/picker-row";
 import { ScreenHeader } from "@/components/screen-header";
+import { Segmented } from "@/components/segmented";
 import { timeOptions, TimeSelect } from "@/components/time-select";
 import { Banner, Button, FormRow, HeaderButton, Input, Loading, Row, Screen, Section, SwitchRow, Text, TextAreaRow } from "@/components/ui";
 import { dayBounds, toDateKey } from "@shared/availability.ts";
 import { formatDuration, formatInTz, formatMoney, parseMoney } from "@shared/format.ts";
-import { SERVICE_CATEGORIES, type Client, type Service } from "@shared/types.ts";
+import { PAYMENT_METHOD_LABEL, SERVICE_CATEGORIES, type Client, type PaymentMethod, type Service } from "@shared/types.ts";
 import { useBusiness } from "@/lib/auth";
 import { callFunction, supabase } from "@/lib/supabase";
 import { invalidate, useQuery } from "@/lib/use-query";
@@ -60,6 +62,11 @@ export default function NewAppointment() {
   const [notify, setNotify] = useState(true);
   const [promo, setPromo] = useState(false);
   const [promoValue, setPromoValue] = useState("");
+  // Pagamento antecipado (só ao criar): integral ou sinal, com a forma de pagamento.
+  const [prepaid, setPrepaid] = useState(false);
+  const [prepaidFull, setPrepaidFull] = useState(false);
+  const [depositValue, setDepositValue] = useState("");
+  const [payMethod, setPayMethod] = useState<PaymentMethod>("pix");
   const [error, setError] = useState<string>();
   const [saving, setSaving] = useState(false);
 
@@ -117,6 +124,7 @@ export default function NewAppointment() {
     }
     if (!serviceId) return setError("Escolha um serviço.");
     if (promo && !/\d/.test(promoValue)) return setError("Informe o valor promocional.");
+    if (!editingId && prepaid && !prepaidFull && !(parseMoney(depositValue) > 0)) return setError("Informe o valor do sinal.");
     if (!time) return setError("Escolha o horário.");
     setSaving(true);
     try {
@@ -138,6 +146,7 @@ export default function NewAppointment() {
         notes,
         notify,
         priceCents: promoCents,
+        payment: prepaid ? { full: prepaidFull, amountCents: prepaidFull ? undefined : parseMoney(depositValue), method: payMethod } : undefined,
       });
       invalidate();
       router.back();
@@ -212,6 +221,40 @@ export default function NewAppointment() {
           </FormRow>
         )}
       </Section>
+
+      {/* Pagamento antecipado (só ao criar; depois, registra pelo detalhe do agendamento). */}
+      {!editingId && (
+        <Section
+          header="Pagamento"
+          footer={
+            prepaid
+              ? prepaidFull
+                ? `Fica registrado como pago: ${formatMoney(promoCents ?? service?.price_cents ?? 0)}.`
+                : "O restante pode ser registrado depois, no detalhe do agendamento."
+              : "Se a cliente já pagou tudo ou um sinal para reservar o dia."
+          }
+        >
+          <SwitchRow label="Pagamento antecipado?" value={prepaid} onValueChange={setPrepaid} />
+          {prepaid && (
+            <>
+              <View style={{ paddingHorizontal: 16, paddingTop: 10 }}>
+                <Segmented values={["Sinal", "Pago integral"]} selectedIndex={prepaidFull ? 1 : 0} onChange={(i) => setPrepaidFull(i === 1)} />
+              </View>
+              {!prepaidFull && (
+                <FormRow label="Valor do sinal">
+                  <Input value={depositValue} onChangeText={setDepositValue} placeholder="R$ 0,00" keyboardType="decimal-pad" />
+                </FormRow>
+              )}
+              <PickerRow
+                label="Forma"
+                value={payMethod}
+                onChange={setPayMethod}
+                options={(Object.keys(PAYMENT_METHOD_LABEL) as PaymentMethod[]).map((m) => ({ label: PAYMENT_METHOD_LABEL[m], value: m }))}
+              />
+            </>
+          )}
+        </Section>
+      )}
     </>
   );
 
@@ -271,6 +314,7 @@ export default function NewAppointment() {
           {clientName} · {service.name} · {dateLabel.split(",")[0]}, {formatInTz(dayBounds(date, tz).start, "dd/MM", tz)} às {time} ·{" "}
           {formatMoney(promoCents ?? service.price_cents)}
           {promoCents !== undefined ? " (promocional)" : ""}
+          {!editingId && prepaid ? (prepaidFull ? " · já pago" : parseMoney(depositValue) > 0 ? ` · sinal ${formatMoney(parseMoney(depositValue))}` : "") : ""}
         </Text>
       ) : null}
       {error && <Banner>{error}</Banner>}

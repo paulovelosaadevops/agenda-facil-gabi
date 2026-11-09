@@ -1,7 +1,7 @@
 import { Link } from "expo-router";
 import { Pressable, StyleSheet, View } from "react-native";
 import { formatInTz, formatMoney } from "@shared/format.ts";
-import type { AppointmentWithRefs } from "@shared/types.ts";
+import { paymentStatus, type AppointmentWithRefs } from "@shared/types.ts";
 import { useTheme } from "@/lib/theme";
 import { STATUS_LABEL, statusColor } from "./status";
 import { hairline, tap, Text } from "./ui";
@@ -37,6 +37,12 @@ export function AppointmentList({ appointments, timeZone }: { appointments: Appo
                       </Text>
                       <Text variant="footnote" color="label2" numberOfLines={1}>
                         {a.services?.name} · {formatMoney(a.price_cents)}
+                        {/* Pagamento antecipado: selo para a Gabi bater o olho. */}
+                        {a.paid_cents > 0 && (
+                          <Text variant="footnote" style={{ color: paymentStatus(a).label === "Pago" ? theme.green : theme.accent, fontWeight: "600" }}>
+                            {paymentStatus(a).label === "Pago" ? " · Pago" : ` · Sinal ${formatMoney(a.paid_cents)}`}
+                          </Text>
+                        )}
                       </Text>
                       {a.status !== "confirmed" && (
                         <Text variant="caption" style={{ color: statusColor(a.status, theme), fontWeight: "600", marginTop: 2 }}>

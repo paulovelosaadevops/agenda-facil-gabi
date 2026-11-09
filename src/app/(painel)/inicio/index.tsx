@@ -225,6 +225,12 @@ export default function Dashboard() {
                 + {money(data.monthPending)} aguardando confirmação
               </Text>
             )}
+            {/* Sinais e pagamentos integrais de horários que ainda vão acontecer. */}
+            {data.prepaid > 0 && (
+              <Text variant="footnote" color="label2" style={{ marginTop: data.monthPending > 0 ? 2 : 12 }}>
+                Recebido antecipado: {money(data.prepaid)}
+              </Text>
+            )}
           </View>
 
           {/* Números do negócio */}

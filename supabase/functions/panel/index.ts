@@ -37,6 +37,14 @@ const Request = z.discriminatedUnion("action", [
     notify: z.boolean().default(true),
     // "Valor promocional?" marcado: este valor (em centavos) vale no lugar do preço do serviço.
     priceCents: z.number().int().min(0, "Valor promocional inválido.").max(10_000_000).optional(),
+    // "Pagamento antecipado?": integral (o valor do agendamento) ou sinal (valor informado).
+    payment: z
+      .object({
+        full: z.boolean(),
+        amountCents: z.number().int().min(1, "Informe o valor do sinal.").max(10_000_000).optional(),
+        method: z.enum(["pix", "dinheiro", "cartao", "outro"]).default("pix"),
+      })
+      .optional(),
   }),
   // Editar agendamento (a cliente não muda): serviço, dia/horário, valor promocional e observações.
   z.object({
@@ -95,6 +103,7 @@ Deno.serve(
           const { data } = await db.from("clients").select("id").eq("id", clientId).eq("business_id", business.id).maybeSingle();
           if (!data) throw new HttpError(404, "Cliente não encontrada.");
         }
+        if (input.payment && !input.payment.full && !input.payment.amountCents) throw new HttpError(400, "Informe o valor do sinal.");
         const [y, m, d] = parseDateKey(input.date);
         const [hh, mm] = input.time.split(":").map(Number);
         try {
@@ -109,6 +118,18 @@ Deno.serve(
             notifyClient: input.notify,
             priceCents: input.priceCents,
           });
+          if (input.payment) {
+            const amount = input.payment.full ? appointment.price_cents : input.payment.amountCents!;
+            const { error: payError } = await db.from("payments").insert({
+              business_id: business.id,
+              appointment_id: appointment.id,
+              amount_cents: amount,
+              method: input.payment.method,
+              kind: input.payment.full ? "integral" : "sinal",
+            });
+            // O agendamento já foi criado: avisa para registrar o pagamento pelo detalhe, sem desfazer o horário.
+            if (payError) throw new HttpError(500, "Agendado, mas o pagamento não foi registrado. Registre pelo detalhe do agendamento.");
+          }
           return json({ id: appointment.id });
         } catch (err) {
           if (err instanceof BookingError) throw new HttpError(409, err.message);

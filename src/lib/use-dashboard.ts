@@ -19,15 +19,16 @@ export function useDashboard(business: Business) {
     const tomorrow = dayBounds(toDateKey(addDays(now, 1), tz), tz);
     const base = () => supabase.from("appointments").select(SELECT).eq("business_id", business.id);
 
-    const [todayRes, nextRes, monthRes, weekRes, birthdaysRes, maintenanceRes, newClientsRes, toConfirmRes] = await Promise.all([
+    const [todayRes, nextRes, monthRes, weekRes, birthdaysRes, maintenanceRes, newClientsRes, toConfirmRes, prepaidRes] = await Promise.all([
       base().gte("starts_at", today.start.toISOString()).lt("starts_at", today.end.toISOString()).order("starts_at").returns<AppointmentWithRefs[]>(),
       base().in("status", ["pending", "confirmed"]).gte("starts_at", now.toISOString()).order("starts_at").limit(1).returns<AppointmentWithRefs[]>(),
-      // Mês inteiro: concluídos (lucro), confirmados (previsto) e pendentes (aguardando confirmação).
+      // Mês inteiro: concluídos (lucro), confirmados (previsto), pendentes (aguardando confirmação) e
+      // cancelados/faltas (o sinal que ficou com a Gabi também é lucro).
       supabase
         .from("appointments")
-        .select("price_cents, status")
+        .select("price_cents, paid_cents, status")
         .eq("business_id", business.id)
-        .in("status", ["completed", "confirmed", "pending"])
+        .in("status", ["completed", "confirmed", "pending", "cancelled", "no_show"])
         .gte("starts_at", monthStart.toISOString())
         .lt("starts_at", monthEnd.toISOString()),
       supabase
@@ -58,17 +59,24 @@ export function useDashboard(business: Business) {
         .lt("starts_at", tomorrow.end.toISOString())
         .order("starts_at")
         .returns<AppointmentWithRefs[]>(),
+      // Pagamentos antecipados de horários ainda em aberto (qualquer data).
+      supabase.from("appointments").select("paid_cents").eq("business_id", business.id).in("status", ["pending", "confirmed"]).gt("paid_cents", 0),
     ]);
     if (todayRes.error) throw todayRes.error;
 
     const month = local.getMonth() + 1;
-    const sum = (status: string) => (monthRes.data ?? []).filter((a) => a.status === status).reduce((s, a) => s + a.price_cents, 0);
+    const monthRows = monthRes.data ?? [];
+    const sum = (status: string) => monthRows.filter((a) => a.status === status).reduce((s, a) => s + a.price_cents, 0);
+    // Sinal que ficou com a Gabi em cancelamento ou falta (devolvido = líquido zero).
+    const keptDeposits = monthRows.filter((a) => a.status === "cancelled" || a.status === "no_show").reduce((s, a) => s + Math.max(0, a.paid_cents), 0);
     return {
       now,
       hour: local.getHours(),
       today: todayRes.data,
       next: nextRes.data?.[0],
-      monthRevenue: sum("completed"),
+      monthRevenue: sum("completed") + keptDeposits,
+      // Já recebido (sinal ou integral) de horários que ainda vão acontecer.
+      prepaid: (prepaidRes.data ?? []).reduce((s, a) => s + a.paid_cents, 0),
       monthDone: (monthRes.data ?? []).filter((a) => a.status === "completed").length,
       monthConfirmed: sum("confirmed"),
       monthPending: sum("pending"),
