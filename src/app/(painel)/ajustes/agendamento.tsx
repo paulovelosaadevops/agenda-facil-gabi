@@ -1,3 +1,4 @@
+import { useRouter } from "expo-router";
 import { useState } from "react";
 import { PickerRow } from "@/components/picker-row";
 import { ScreenHeader } from "@/components/screen-header";
@@ -15,6 +16,7 @@ const hours = (h: number) =>
   h === 0 ? "Nenhuma" : h === 1 ? "1 hora" : h % 24 || h < 24 ? `${h} horas` : h === 24 ? "1 dia" : `${h / 24} dias`;
 
 export default function SchedulingSettings() {
+  const router = useRouter();
   const b = useBusiness();
   const { save, saving, error } = useSaveBusiness();
   const [interval, setInterval] = useState(b.slot_interval_min);
@@ -28,6 +30,7 @@ export default function SchedulingSettings() {
     <Screen>
       <ScreenHeader
         title="Agendamento"
+        left={<HeaderButton icon="close" accessibilityLabel="Fechar" onPress={() => router.back()} />}
         right={
           <HeaderButton
             title={saving ? "Salvando…" : "Salvar"}

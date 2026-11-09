@@ -1,11 +1,12 @@
-import { Linking, StyleSheet, View } from "react-native";
+import { Linking, Pressable, StyleSheet, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
+import { Icon, type IconName } from "@/components/icon";
 import { PickerRow } from "@/components/picker-row";
 import { ScreenHeader } from "@/components/screen-header";
 import { SOURCE_LABEL, STATUS_LABEL, statusColor } from "@/components/status";
-import { Banner, Button, FormRow, HeaderButton, Input, Loading, Row, RowIcon, Screen, Section, Text } from "@/components/ui";
-import { formatDuration, formatInTz, formatMoney, parseMoney, whatsappLink } from "@shared/format.ts";
+import { Avatar, Banner, Button, FormRow, HeaderButton, Input, Loading, Screen, Section, Text } from "@/components/ui";
+import { formatInTz, formatMoney, parseMoney, whatsappLink } from "@shared/format.ts";
 import {
   PAYMENT_KIND_LABEL,
   PAYMENT_METHOD_LABEL,
@@ -20,7 +21,7 @@ import { useBusiness } from "@/lib/auth";
 import { confirmationRequestLink } from "@/lib/confirmation";
 import { openCalendar } from "@/lib/ics";
 import { callFunction, dbErrorMessage, supabase } from "@/lib/supabase";
-import { useTheme } from "@/lib/theme";
+import { Serif, useTheme } from "@/lib/theme";
 import { invalidate, useQuery } from "@/lib/use-query";
 
 const METHOD_OPTIONS = (Object.keys(PAYMENT_METHOD_LABEL) as PaymentMethod[]).map((m) => ({ label: PAYMENT_METHOD_LABEL[m], value: m }));
@@ -60,6 +61,7 @@ export default function AppointmentDetail() {
   const [paying, setPaying] = useState(false);
   const [payValue, setPayValue] = useState("");
   const [payMethod, setPayMethod] = useState<PaymentMethod>("pix");
+  const [showPayments, setShowPayments] = useState(false);
 
   const { data, loading, refresh } = useQuery(async () => {
     const [appt, payments] = await Promise.all([
@@ -131,100 +133,144 @@ export default function AppointmentDetail() {
   // Cancelar: com sinal pago, pergunta se devolve.
   const cancel = () => (appt.paid_cents > 0 ? setAsk("cancel") : setStatus("cancelled"));
 
-  return (
-    <Screen>
-      {header}
-      <View style={{ alignItems: "center", paddingVertical: 12, marginBottom: 16, opacity: busy ? 0.5 : 1 }}>
-        <Text variant="title2">{appt.clients?.name}</Text>
-        <Text color="label2" style={{ marginTop: 2 }}>
-          {appt.services?.name}
-        </Text>
-        <Text style={{ marginTop: 12, fontWeight: "500" }}>{when.charAt(0).toUpperCase() + when.slice(1)}</Text>
-        <Text color="label2" style={{ fontVariant: ["tabular-nums", "lining-nums"] }}>
-          {formatInTz(appt.starts_at, "HH:mm", tz)} – {formatInTz(appt.ends_at, "HH:mm", tz)}
-          {appt.services ? ` · ${formatDuration(appt.services.duration_min)}` : ""}
-        </Text>
-      </View>
-
-      <Section>
-        <Row title="Status" detail={<Text style={{ color: statusColor(appt.status, theme) }}>{STATUS_LABEL[appt.status]}</Text>} />
-        <Row title="Origem" detail={SOURCE_LABEL[appt.source]} />
-        {appt.notes ? <Row title={appt.notes} tone="muted" numberOfLines={0} /> : null}
-      </Section>
-
-      {/* Pagamento: sinal, restante e devoluções, registrados pela Gabi. */}
-      <Section header="Pagamento">
-        <Row title="Valor" detail={formatMoney(appt.price_cents)} />
-        <Row
-          title="Situação"
-          detail={
-            <Text style={{ color: pay.label === "Pago" ? theme.green : pay.label === "Sinal" ? theme.accent : theme.label2, fontWeight: "600" }}>
-              {pay.label === "Pago"
-                ? "Pago ✓"
-                : pay.label === "Sinal"
-                  ? `Sinal ${formatMoney(appt.paid_cents)} · falta ${formatMoney(pay.remaining)}`
-                  : "Não pago"}
-            </Text>
-          }
-        />
-        {data!.payments.map((p) => (
-          <Row
-            key={p.id}
-            title={PAYMENT_KIND_LABEL[p.kind]}
-            subtitle={`${formatInTz(p.paid_at, "dd/MM/yyyy", tz)} · ${PAYMENT_METHOD_LABEL[p.method]}`}
-            detail={<Text style={{ color: p.amount_cents < 0 ? theme.red : theme.label }}>{formatMoney(p.amount_cents)}</Text>}
-          />
-        ))}
-        {!paying && (active || pay.remaining > 0) && (
-          <Row leading={<RowIcon name="tag" />} title="Registrar pagamento" tone="accent" onPress={openPayForm} />
-        )}
-      </Section>
-      {paying && (
-        <View style={{ marginTop: -16, marginBottom: 28 }}>
-          <Section footer={pay.remaining > 0 ? `Falta receber ${formatMoney(pay.remaining)}.` : undefined}>
-            <FormRow label="Valor recebido">
-              <Input value={payValue} onChangeText={setPayValue} placeholder="R$ 0,00" keyboardType="decimal-pad" autoFocus />
-            </FormRow>
-            <PickerRow label="Forma" value={payMethod} onChange={setPayMethod} options={METHOD_OPTIONS} />
-          </Section>
-          <View style={{ flexDirection: "row", gap: 10 }}>
-            <Button title="Cancelar" variant="tinted" style={{ flex: 1 }} onPress={() => setPaying(false)} />
-            <Button title="Salvar pagamento" style={{ flex: 1 }} loading={busy} onPress={savePayment} />
-          </View>
-        </View>
-      )}
-
-      {appt.clients && (
-        <Section>
-          <Row
-            leading={<RowIcon name="message" />}
-            // Pendente: pede a confirmação; depois de confirmado, só abre a conversa.
-            title={appt.status === "pending" ? "Pedir confirmação no WhatsApp" : "Enviar mensagem no WhatsApp"}
-            chevron
-            onPress={() =>
-              Linking.openURL(
+  const actions: { icon: IconName; label: string; onPress: () => void }[] = [
+    ...(appt.clients
+      ? [
+          {
+            icon: "message" as IconName,
+            // Pendente: pede a confirmação; depois, só abre a conversa.
+            label: appt.status === "pending" ? "Pedir confirmação" : "WhatsApp",
+            onPress: () =>
+              void Linking.openURL(
                 appt.status === "pending"
                   ? confirmationRequestLink(appt, tz)!
                   : whatsappLink(appt.clients!.phone, `Olá, ${appt.clients!.name.split(" ")[0]}! Aqui é a Gabi.`),
-              )
-            }
-          />
-          <Row leading={<RowIcon name="person" />} title="Ver cliente" chevron href={`/clientes/${appt.clients.id}`} />
-          <Row
-            leading={<RowIcon name="calendarPlus" />}
-            title="Adicionar ao calendário"
-            chevron
-            onPress={async () => {
-              try {
-                const { url } = await callFunction<{ url: string }>("panel", { action: "calendar-url", appointmentId: appt.id });
-                openCalendar(url);
-              } catch (err) {
-                setError(err instanceof Error ? err.message : "Não foi possível abrir o calendário.");
-              }
-            }}
-          />
-        </Section>
-      )}
+              ),
+          },
+        ]
+      : []),
+    ...(appt.status === "pending" ? [{ icon: "check" as IconName, label: "Confirmar", onPress: () => void setStatus("confirmed") }] : []),
+    ...(active ? [{ icon: "pencil" as IconName, label: "Editar", onPress: () => router.push({ pathname: "/agenda/novo", params: { id: appt.id } }) }] : []),
+    {
+      icon: "calendarPlus",
+      label: "Calendário",
+      onPress: async () => {
+        try {
+          const { url } = await callFunction<{ url: string }>("panel", { action: "calendar-url", appointmentId: appt.id });
+          openCalendar(url);
+        } catch (err) {
+          setError(err instanceof Error ? err.message : "Não foi possível abrir o calendário.");
+        }
+      },
+    },
+    ...(appt.clients ? [{ icon: "person" as IconName, label: "Cliente", onPress: () => router.push(`/clientes/${appt.clients!.id}`) }] : []),
+  ];
+  const statusTint = statusColor(appt.status, theme);
+
+  return (
+    <Screen>
+      {header}
+
+      {/* Quem, o quê e quando: centralizado, sem lista. */}
+      <View style={[styles.hero, { opacity: busy ? 0.5 : 1 }]}>
+        <Avatar name={appt.clients?.name ?? "?"} size={64} />
+        <Text variant="title2" style={{ marginTop: 12, textAlign: "center" }}>
+          {appt.clients?.name}
+        </Text>
+        <Text color="label2" style={{ marginTop: 2, textAlign: "center" }}>
+          {appt.services?.name}
+        </Text>
+        <View style={[styles.when, { backgroundColor: theme.surface }]}>
+          <Icon name="calendar" size={15} color={theme.accent} />
+          <Text variant="subhead" style={{ fontWeight: "600", fontVariant: ["tabular-nums", "lining-nums"] }}>
+            {when.charAt(0).toUpperCase() + when.slice(1)} · {formatInTz(appt.starts_at, "HH:mm", tz)}–{formatInTz(appt.ends_at, "HH:mm", tz)}
+          </Text>
+        </View>
+        <View style={[styles.statusPill, { borderColor: statusTint }]}>
+          <Text variant="caption" style={{ color: statusTint, fontWeight: "700" }}>
+            {STATUS_LABEL[appt.status].toUpperCase()}
+          </Text>
+        </View>
+      </View>
+
+      {/* Ações rápidas: um botão para cada coisa. */}
+      <View style={styles.actions}>
+        {actions.map((a) => (
+          <Pressable
+            key={a.label}
+            accessibilityRole="button"
+            onPress={a.onPress}
+            style={({ pressed }) => [styles.action, { backgroundColor: theme.surface, opacity: pressed ? 0.6 : 1 }]}
+          >
+            <Icon name={a.icon} size={22} color={theme.accent} />
+            <Text variant="caption" numberOfLines={2} style={{ fontWeight: "500", textAlign: "center" }}>
+              {a.label}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+
+      {/* Pagamento: valor em destaque, situação e um botão. Lançamentos ficam recolhidos. */}
+      <View style={[styles.card, { backgroundColor: theme.surface }]}>
+        <Text variant="overline" style={{ color: theme.champagne, textAlign: "center" }}>
+          PAGAMENTO
+        </Text>
+        <Text style={[styles.price, { color: theme.label }]}>{formatMoney(appt.price_cents)}</Text>
+        <Text
+          variant="subhead"
+          style={{ textAlign: "center", fontWeight: "600", color: pay.label === "Pago" ? theme.green : pay.label === "Sinal" ? theme.accent : theme.label2 }}
+        >
+          {pay.label === "Pago" ? "Pago ✓" : pay.label === "Sinal" ? `Sinal ${formatMoney(appt.paid_cents)} · falta ${formatMoney(pay.remaining)}` : "Não pago"}
+        </Text>
+        {data!.payments.length > 0 && (
+          <Pressable hitSlop={8} onPress={() => setShowPayments((v) => !v)} style={{ alignSelf: "center", marginTop: 8 }}>
+            <Text variant="footnote" color="accent">
+              {showPayments ? "Ocultar lançamentos" : `Ver lançamentos (${data!.payments.length})`}
+            </Text>
+          </Pressable>
+        )}
+        {showPayments &&
+          data!.payments.map((p) => (
+            <View key={p.id} style={[styles.paymentLine, { borderTopColor: theme.separator }]}>
+              <View style={{ flex: 1 }}>
+                <Text variant="subhead">{PAYMENT_KIND_LABEL[p.kind]}</Text>
+                <Text variant="caption" color="label2">
+                  {formatInTz(p.paid_at, "dd/MM/yyyy", tz)} · {PAYMENT_METHOD_LABEL[p.method]}
+                </Text>
+              </View>
+              <Text variant="subhead" style={{ color: p.amount_cents < 0 ? theme.red : theme.label, fontWeight: "600" }}>
+                {formatMoney(p.amount_cents)}
+              </Text>
+            </View>
+          ))}
+        {paying ? (
+          <View style={{ marginTop: 16 }}>
+            <Section footer={pay.remaining > 0 ? `Falta receber ${formatMoney(pay.remaining)}.` : undefined} style={{ marginBottom: 12 }}>
+              <FormRow label="Valor recebido">
+                <Input value={payValue} onChangeText={setPayValue} placeholder="R$ 0,00" keyboardType="decimal-pad" autoFocus />
+              </FormRow>
+              <PickerRow label="Forma" value={payMethod} onChange={setPayMethod} options={METHOD_OPTIONS} />
+            </Section>
+            <View style={{ flexDirection: "row", gap: 10 }}>
+              <Button title="Cancelar" variant="tinted" style={{ flex: 1 }} onPress={() => setPaying(false)} />
+              <Button title="Salvar" style={{ flex: 1 }} loading={busy} onPress={savePayment} />
+            </View>
+          </View>
+        ) : (
+          (active || pay.remaining > 0) && <Button title="Registrar pagamento" icon="tag" variant="tinted" style={{ marginTop: 16 }} onPress={openPayForm} />
+        )}
+      </View>
+
+      {appt.notes ? (
+        <View style={[styles.card, { backgroundColor: theme.surface }]}>
+          <Text variant="overline" style={{ color: theme.champagne, textAlign: "center" }}>
+            OBSERVAÇÕES
+          </Text>
+          <Text color="label2" style={{ textAlign: "center", marginTop: 6 }}>
+            {appt.notes}
+          </Text>
+        </View>
+      ) : null}
 
       {error && <Banner>{error}</Banner>}
 
@@ -268,34 +314,37 @@ export default function AppointmentDetail() {
         />
       )}
 
-      {!ask && (
-        <Section>
-          {active ? (
-            [
-              <Row
-                key="e"
-                leading={<RowIcon name="pencil" />}
-                title="Editar agendamento"
-                chevron
-                onPress={() => router.push({ pathname: "/agenda/novo", params: { id: appt.id } })}
-              />,
-              appt.status === "pending" && (
-                <Row key="ok" leading={<RowIcon name="check" />} title="Marcar como confirmado" onPress={() => setStatus("confirmed")} />
-              ),
-              <Row key="c" leading={<RowIcon name="check" />} title="Concluir atendimento" onPress={complete} />,
-              <Row key="n" leading={<RowIcon name="noShow" />} title="Cliente não compareceu" onPress={() => setStatus("no_show")} />,
-              <Row key="x" leading={<RowIcon name="cancel" tone="destructive" />} title="Cancelar agendamento" tone="destructive" onPress={cancel} />,
-            ]
-          ) : (
-            // Reaberto volta a precisar de confirmação.
-            <Row leading={<RowIcon name="reopen" />} title="Reabrir agendamento" onPress={() => setStatus("pending")} />
-          )}
-        </Section>
-      )}
+      {/* Ação principal em destaque; as demais, discretas. */}
+      {!ask &&
+        (active ? (
+          <View style={{ gap: 6 }}>
+            <Button title="Concluir atendimento" icon="check" onPress={complete} loading={busy} />
+            <View style={styles.secondary}>
+              <Button title="Não compareceu" variant="plain" style={{ flex: 1 }} onPress={() => void setStatus("no_show")} />
+              <Button title="Cancelar" variant="destructive" style={{ flex: 1 }} onPress={cancel} />
+            </View>
+          </View>
+        ) : (
+          // Reaberto volta a precisar de confirmação.
+          <Button title="Reabrir agendamento" icon="reopen" variant="tinted" onPress={() => void setStatus("pending")} />
+        ))}
+
+      <Text variant="caption" color="label3" style={{ textAlign: "center", marginTop: 20 }}>
+        Origem: {SOURCE_LABEL[appt.source]}
+      </Text>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  question: { borderRadius: 16, borderWidth: 1, padding: 16, marginBottom: 28, borderCurve: "continuous" },
+  question: { borderRadius: 16, borderWidth: 1, padding: 16, marginBottom: 20, borderCurve: "continuous" },
+  hero: { alignItems: "center", paddingTop: 8, marginBottom: 20 },
+  when: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 14, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999 },
+  statusPill: { marginTop: 10, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 999, borderWidth: 1 },
+  actions: { flexDirection: "row", gap: 8, marginBottom: 16 },
+  action: { flex: 1, alignItems: "center", gap: 6, paddingVertical: 12, paddingHorizontal: 4, borderRadius: 14, borderCurve: "continuous" },
+  card: { borderRadius: 18, padding: 18, marginBottom: 16, borderCurve: "continuous" },
+  price: { fontFamily: Serif.medium, fontSize: 36, lineHeight: 42, textAlign: "center", marginTop: 4, fontVariant: ["lining-nums"] },
+  paymentLine: { flexDirection: "row", alignItems: "center", gap: 12, paddingTop: 10, marginTop: 10, borderTopWidth: StyleSheet.hairlineWidth },
+  secondary: { flexDirection: "row", gap: 10 },
 });

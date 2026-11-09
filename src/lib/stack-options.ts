@@ -30,6 +30,9 @@ export function useStackOptions(): StackOptions {
 export const modalOptions = {
   presentation: "modal",
   headerLargeTitleEnabled: false,
+  // Site: sem arrastar para fechar. Ao rolar um formulário longo, o painel descia junto com o dedo
+  // ("sobe e desce"); fecha pelo X/OK de cada tela. No app nativo o gesto continua.
+  gestureEnabled: Platform.OS !== "web",
   sheetCornerRadius: 24,
   webModalStyle: {
     width: 560,

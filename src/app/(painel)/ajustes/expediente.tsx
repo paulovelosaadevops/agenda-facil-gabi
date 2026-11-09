@@ -99,7 +99,11 @@ export default function WorkingHoursSettings() {
 
   return (
     <Screen>
-      <ScreenHeader title="Expediente" right={<HeaderButton title={saving ? "Salvando…" : "Salvar"} bold onPress={save} />} />
+      <ScreenHeader
+        title="Expediente"
+        left={<HeaderButton icon="close" accessibilityLabel="Fechar" onPress={() => router.back()} />}
+        right={<HeaderButton title={saving ? "Salvando…" : "Salvar"} bold onPress={save} />}
+      />
       {error && <Banner>{error}</Banner>}
       {notice && <Banner tone="success">{notice}</Banner>}
       {!days ? (

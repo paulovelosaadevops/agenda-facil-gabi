@@ -1,9 +1,10 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
-import { View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 import { ClientPicker, NEW_CLIENT } from "@/components/client-picker";
 import { DateField } from "@/components/date-calendar";
 import { GroupedPickerRow } from "@/components/grouped-picker";
+import { Icon } from "@/components/icon";
 import { PickerRow } from "@/components/picker-row";
 import { ScreenHeader } from "@/components/screen-header";
 import { Segmented } from "@/components/segmented";
@@ -14,6 +15,7 @@ import { formatDuration, formatInTz, formatMoney, parseMoney } from "@shared/for
 import { PAYMENT_METHOD_LABEL, SERVICE_CATEGORIES, type Client, type PaymentMethod, type Service } from "@shared/types.ts";
 import { useBusiness } from "@/lib/auth";
 import { callFunction, supabase } from "@/lib/supabase";
+import { useTheme } from "@/lib/theme";
 import { invalidate, useQuery } from "@/lib/use-query";
 import { useSlotSuggestions } from "@/lib/use-slot-suggestions";
 
@@ -39,6 +41,7 @@ const slotGroups = (slots: string[], durationMin: number) =>
 
 export default function NewAppointment() {
   const router = useRouter();
+  const theme = useTheme();
   const business = useBusiness();
   const tz = business.timezone;
   // ?id=: editar um agendamento existente (a cliente fica fixa).
@@ -65,6 +68,7 @@ export default function NewAppointment() {
   const [prepaidFull, setPrepaidFull] = useState(false);
   const [depositValue, setDepositValue] = useState("");
   const [payMethod, setPayMethod] = useState<PaymentMethod>("pix");
+  const [moreOpen, setMoreOpen] = useState(false);
   const [error, setError] = useState<string>();
   const [saving, setSaving] = useState(false);
 
@@ -90,10 +94,13 @@ export default function NewAppointment() {
       setDate(toDateKey(new Date(appt.starts_at), tz));
       setTime(formatInTz(appt.starts_at, "HH:mm", tz));
       setNotes(appt.notes);
-      if (appt.services && appt.price_cents !== appt.services.price_cents) {
+      const hasPromo = Boolean(appt.services && appt.price_cents !== appt.services.price_cents);
+      if (hasPromo) {
         setPromo(true);
         setPromoValue((appt.price_cents / 100).toFixed(2).replace(".", ","));
       }
+      // Já tem promoção ou observação: "Mais opções" abre para ela ver.
+      if (hasPromo || appt.notes) setMoreOpen(true);
     }
     return { clients: clients.data ?? [], services: services.data ?? [], editingDate: appt ? toDateKey(new Date(appt.starts_at), tz) : undefined };
   }, [editingId]);
@@ -186,16 +193,7 @@ export default function NewAppointment() {
         )}
       </Section>
 
-      <Section
-        header="Serviço"
-        footer={
-          promo && service
-            ? `Vale só neste agendamento, no lugar de ${formatMoney(service.price_cents)}. É o valor usado no lucro.`
-            : service
-              ? serviceMeta(service)
-              : undefined
-        }
-      >
+      <Section header="Serviço" footer={service ? serviceMeta(service) : undefined}>
         <GroupedPickerRow
           label="Serviço"
           value={serviceId}
@@ -205,7 +203,21 @@ export default function NewAppointment() {
             setTime("");
           }}
         />
-        {/* Promoção: só com a opção marcada o valor informado substitui o preço do serviço. */}
+      </Section>
+    </>
+  );
+
+  // Opcionais, recolhidos em "Mais opções": encaixe, promoção, pagamento, observações e aviso à cliente.
+  const extras = (
+    <>
+      <Section footer="Para encaixar fora dos horários livres.">
+        <FormRow label="Outro horário">
+          <TimeSelect value={slots?.includes(time) ? "" : time} onChange={setTime} title="Outro horário" options={timeOptions("06:00", "22:00", 15)} />
+        </FormRow>
+      </Section>
+
+      {/* Promoção: só com a opção marcada o valor informado substitui o preço do serviço. */}
+      <Section footer={promo && service ? `Vale só neste agendamento, no lugar de ${formatMoney(service.price_cents)}.` : undefined}>
         <SwitchRow label="Valor promocional?" value={promo} onValueChange={setPromo} />
         {promo && (
           <FormRow label="Valor">
@@ -222,16 +234,7 @@ export default function NewAppointment() {
 
       {/* Pagamento antecipado (só ao criar; depois, registra pelo detalhe do agendamento). */}
       {!editingId && (
-        <Section
-          header="Pagamento"
-          footer={
-            prepaid
-              ? prepaidFull
-                ? `Fica registrado como pago: ${formatMoney(promoCents ?? service?.price_cents ?? 0)}.`
-                : "O restante pode ser registrado depois, no detalhe do agendamento."
-              : "Se a cliente já pagou tudo ou um sinal para reservar o dia."
-          }
-        >
+        <Section footer={prepaid && !prepaidFull ? "O restante pode ser registrado depois, no detalhe do agendamento." : undefined}>
           <SwitchRow label="Pagamento antecipado?" value={prepaid} onValueChange={setPrepaid} />
           {prepaid && (
             <>
@@ -253,6 +256,11 @@ export default function NewAppointment() {
           )}
         </Section>
       )}
+
+      <Section>
+        <TextAreaRow value={notes} onChangeText={setNotes} placeholder="Observações" />
+        {!editingId && <SwitchRow label="Confirmar no WhatsApp" value={notify} onValueChange={setNotify} />}
+      </Section>
     </>
   );
 
@@ -290,25 +298,42 @@ export default function NewAppointment() {
           <Banner tone="info">Nenhum horário livre no expediente deste dia.</Banner>
         )}
       </View>
-      <Section footer="Para encaixar fora dos horários livres.">
-        <FormRow label="Outro horário">
-          <TimeSelect value={slots?.includes(time) ? "" : time} onChange={setTime} title="Outro horário" options={timeOptions("06:00", "22:00", 15)} />
-        </FormRow>
-      </Section>
-
-      <Section>
-        <TextAreaRow value={notes} onChangeText={setNotes} placeholder="Observações" />
-        {!editingId && <SwitchRow label="Confirmar no WhatsApp" value={notify} onValueChange={setNotify} />}
-      </Section>
-
-      {/* Resumo do que vai ser marcado, logo acima do botão. */}
-      {clientName && service && time ? (
-        <Text variant="subhead" color="label2" style={{ marginBottom: 12, marginHorizontal: 4 }}>
-          {clientName} · {service.name} · {dateLabel.split(",")[0]}, {formatInTz(dayBounds(date, tz).start, "dd/MM", tz)} às {time} ·{" "}
-          {formatMoney(promoCents ?? service.price_cents)}
-          {promoCents !== undefined ? " (promocional)" : ""}
-          {!editingId && prepaid ? (prepaidFull ? " · já pago" : parseMoney(depositValue) > 0 ? ` · sinal ${formatMoney(parseMoney(depositValue))}` : "") : ""}
+      {/* "Mais opções": recolhido para o formulário ficar só com o essencial. */}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ expanded: moreOpen }}
+        onPress={() => setMoreOpen((v) => !v)}
+        style={({ pressed }) => [styles.more, { backgroundColor: theme.surface, opacity: pressed ? 0.7 : 1 }]}
+      >
+        <Text style={{ fontWeight: "600", flex: 1 }}>Mais opções</Text>
+        <Text variant="footnote" color="label2" numberOfLines={1} style={{ flexShrink: 1 }}>
+          {moreOpen ? "" : "Encaixe, promoção, pagamento, observações"}
         </Text>
+        <View style={{ transform: [{ rotate: moreOpen ? "90deg" : "0deg" }] }}>
+          <Icon name="chevronRight" size={14} color={theme.label3} />
+        </View>
+      </Pressable>
+      {moreOpen && extras}
+
+      {/* Resumo do que vai ser marcado, centralizado, logo acima do botão. */}
+      {clientName && service && time ? (
+        <View style={[styles.summary, { backgroundColor: theme.surface }]}>
+          <Text variant="headline" style={{ textAlign: "center" }}>
+            {clientName}
+          </Text>
+          <Text variant="subhead" color="label2" style={{ textAlign: "center", marginTop: 2 }}>
+            {service.name}
+          </Text>
+          <Text variant="subhead" style={{ textAlign: "center", marginTop: 6, fontWeight: "600" }}>
+            {dateLabel.split(",")[0]}, {formatInTz(dayBounds(date, tz).start, "dd/MM", tz)} às {time} · {formatMoney(promoCents ?? service.price_cents)}
+            {promoCents !== undefined ? " (promocional)" : ""}
+          </Text>
+          {!editingId && prepaid && (prepaidFull || parseMoney(depositValue) > 0) && (
+            <Text variant="footnote" color="accent" style={{ textAlign: "center", marginTop: 2 }}>
+              {prepaidFull ? "Já pago" : `Sinal de ${formatMoney(parseMoney(depositValue))}`}
+            </Text>
+          )}
+        </View>
       ) : null}
       {error && <Banner>{error}</Banner>}
       <Button title={editingId ? "Salvar alterações" : time ? `Agendar às ${time}` : "Agendar"} onPress={save} loading={saving} />
@@ -323,3 +348,8 @@ export default function NewAppointment() {
     </Screen>
   );
 }
+
+const styles = StyleSheet.create({
+  more: { flexDirection: "row", alignItems: "center", gap: 10, minHeight: 48, paddingHorizontal: 16, borderRadius: 12, marginBottom: 20, borderCurve: "continuous" },
+  summary: { borderRadius: 16, padding: 16, marginBottom: 14, borderCurve: "continuous" },
+});

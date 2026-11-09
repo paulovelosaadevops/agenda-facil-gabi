@@ -1,3 +1,4 @@
+import { useRouter } from "expo-router";
 import { useState } from "react";
 import { ScreenHeader } from "@/components/screen-header";
 import { publicBookingUrl } from "@/components/share-link";
@@ -7,6 +8,7 @@ import { useBusiness } from "@/lib/auth";
 import { useSaveBusiness } from "@/lib/use-save-business";
 
 export default function StudioSettings() {
+  const router = useRouter();
   const business = useBusiness();
   const { save, saving, error, setError } = useSaveBusiness();
   const [name, setName] = useState(business.name);
@@ -22,7 +24,11 @@ export default function StudioSettings() {
 
   return (
     <Screen keyboard>
-      <ScreenHeader title="Estúdio" right={<HeaderButton title={saving ? "Salvando…" : "Salvar"} bold onPress={submit} />} />
+      <ScreenHeader
+        title="Estúdio"
+        left={<HeaderButton icon="close" accessibilityLabel="Fechar" onPress={() => router.back()} />}
+        right={<HeaderButton title={saving ? "Salvando…" : "Salvar"} bold onPress={submit} />}
+      />
       {error && <Banner>{error}</Banner>}
       <Section>
         <FormRow label="Nome">
