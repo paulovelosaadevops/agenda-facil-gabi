@@ -204,6 +204,16 @@ describe.runIf(run)("regras do estúdio com banco real", () => {
     await expect(book()).resolves.toBeTruthy();
   });
 
+  it("valor promocional substitui o preço do serviço só quando informado", async () => {
+    const client = await upsertClientProfile(admin, business.id, profile("5511933330001", "Promo"));
+    const day = toDateKey(addDays(new Date(), 11), business.timezone);
+    const [first, , , second] = await getAvailableSlots(admin, business, serviceId, day);
+    const promo = await createBooking(admin, { business, serviceId, clientId: client.id, startsAt: first, source: "panel", enforceRules: false, notifyClient: false, priceCents: 5000 });
+    expect(promo.appointment.price_cents).toBe(5000);
+    const normal = await createBooking(admin, { business, serviceId, clientId: client.id, startsAt: second, source: "panel", enforceRules: false, notifyClient: false });
+    expect(normal.appointment.price_cents).toBe(9000); // preço do serviço "Gel"
+  });
+
   it("combo que inclui pés (sem a marca no combo) também é só para clientes liberadas", async () => {
     const { data: pe } = await owner
       .from("services")

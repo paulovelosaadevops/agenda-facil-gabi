@@ -77,11 +77,14 @@ export interface CreateBookingInput {
   /** Regra das clientes: no máximo 1 agendamento ativo por dia (combos cobrem mão + pé). */
   onePerDay?: boolean;
   notifyClient: boolean;
+  /** Valor promocional (painel da Gabi): substitui o preço do serviço neste agendamento. */
+  priceCents?: number;
 }
 
 export async function createBooking(db: SupabaseClient, input: CreateBookingInput) {
   const { business } = input;
   const service = await getService(db, business.id, input.serviceId);
+  const price = input.priceCents ?? service.price_cents;
   if (!service.active && input.enforceRules) throw new BookingError("Este serviço não está disponível.");
 
   const startsAt = input.startsAt;
@@ -154,7 +157,7 @@ export async function createBooking(db: SupabaseClient, input: CreateBookingInpu
       // Fica pendente até a Gabi confirmar com a cliente (na véspera, pelo WhatsApp).
       status: "pending",
       source: input.source,
-      price_cents: service.price_cents,
+      price_cents: price,
       notes: input.notes ?? "",
     })
     .select("*, clients(id, name, phone, whatsapp, email)")
@@ -185,7 +188,7 @@ export async function createBooking(db: SupabaseClient, input: CreateBookingInpu
         preheader: `Seu horário está reservado para ${when}.`,
         title: "Horário reservado!",
         text: `Olá, ${first}! Seu horário está reservado. Um dia antes, a Gabi vai pedir a sua confirmação pelo WhatsApp.`,
-        ...appointmentBlocks(business, { startsAt, serviceName: service.name, durationMin: service.duration_min, priceCents: service.price_cents }),
+        ...appointmentBlocks(business, { startsAt, serviceName: service.name, durationMin: service.duration_min, priceCents: price }),
         action: { label: "Adicionar ao calendário", url: calendar.cliente },
         secondaryAction: whatsappAction(
           business,
@@ -200,7 +203,7 @@ export async function createBooking(db: SupabaseClient, input: CreateBookingInpu
 
   // A Gabi recebe um aviso de cada horário marcado pelas clientes.
   if (input.source === "public" && client) {
-    const blocks = appointmentBlocks(business, { startsAt, serviceName: service.name, priceCents: service.price_cents }, "Novo agendamento");
+    const blocks = appointmentBlocks(business, { startsAt, serviceName: service.name, priceCents: price }, "Novo agendamento");
     const details: [string, string][] = [["Cliente", client.name], ["Telefone", formatPhone(client.phone)]];
     if (client.email) details.push(["E-mail", client.email]);
     if (input.notes) details.push(["Observações", input.notes]);

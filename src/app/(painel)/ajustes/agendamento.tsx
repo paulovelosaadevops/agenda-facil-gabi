@@ -6,7 +6,9 @@ import { Banner, HeaderButton, Screen, Section } from "@/components/ui";
 import { useBusiness } from "@/lib/auth";
 import { useSaveBusiness } from "@/lib/use-save-business";
 
-const withCurrent = (values: number[], current: number) =>
+const NO_LIMIT = "23:59";
+
+const withCurrent =(values: number[], current: number) =>
   values.includes(current) ? values : [...values, current].sort((a, b) => a - b);
 
 const hours = (h: number) =>
@@ -60,12 +62,15 @@ export default function SchedulingSettings() {
           options={withCurrent([0, 10, 15, 20, 30, 45, 60], b.buffer_min).map((v) => ({ label: v ? `${v} min` : "Sem intervalo", value: v }))}
         />
       </Section>
-      <Section footer="O expediente define os horários de início; o atendimento pode passar do fim dele, mas nunca termina depois deste horário. Ex.: tarde das 13:00 às 18:30 → último início às 18:00.">
+      <Section footer="O expediente define os horários de início; o atendimento pode passar do fim dele. Com um horário escolhido, ele nunca termina depois disso. “Sem limite”: pode terminar a qualquer hora do dia.">
         <PickerRow
           label="Terminar no máximo às"
           value={latestEnd}
           onChange={setLatestEnd}
-          options={[...new Set([...timeOptions("17:00", "23:30", 30), latestEnd])].sort().map((v) => ({ label: v, value: v }))}
+          // "Sem limite" = 23:59, o fim do dia (o atendimento não passa para o dia seguinte).
+          options={[...new Set([...timeOptions("17:00", "23:30", 30), latestEnd, NO_LIMIT])]
+            .sort()
+            .map((v) => ({ label: v === NO_LIMIT ? "Sem limite" : v, value: v }))}
         />
       </Section>
       <Section footer="Evita agendamentos em cima da hora e muito distantes. Vale para as clientes; você pode encaixar quando quiser.">

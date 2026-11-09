@@ -8,7 +8,7 @@ import { ScreenHeader } from "@/components/screen-header";
 import { timeOptions, TimeSelect } from "@/components/time-select";
 import { Banner, Button, FormRow, HeaderButton, Input, Loading, Screen, Section, SwitchRow, Text, TextAreaRow } from "@/components/ui";
 import { dayBounds, toDateKey } from "@shared/availability.ts";
-import { formatDuration, formatInTz, formatMoney } from "@shared/format.ts";
+import { formatDuration, formatInTz, formatMoney, parseMoney } from "@shared/format.ts";
 import { SERVICE_CATEGORIES, type Client, type Service } from "@shared/types.ts";
 import { useBusiness } from "@/lib/auth";
 import { callFunction, supabase } from "@/lib/supabase";
@@ -66,6 +66,8 @@ export default function NewAppointment() {
   const [time, setTime] = useState("");
   const [notes, setNotes] = useState("");
   const [notify, setNotify] = useState(true);
+  const [promo, setPromo] = useState(false);
+  const [promoValue, setPromoValue] = useState("");
   const [error, setError] = useState<string>();
   const [saving, setSaving] = useState(false);
   const slots = useSlotSuggestions(business, serviceId, date);
@@ -80,6 +82,8 @@ export default function NewAppointment() {
   })).filter((g) => g.options.length);
   const dateLabel = capitalize(formatInTz(dayBounds(date, tz).start, "EEEE, d 'de' MMMM", tz));
   const clientName = client?.name ?? (isNewClient ? newName.trim() : "");
+  // Só com "Valor promocional?" marcado o valor informado vale; senão, o preço do serviço.
+  const promoCents = promo && /\d/.test(promoValue) ? parseMoney(promoValue) : undefined;
 
   const save = async () => {
     setError(undefined);
@@ -89,6 +93,7 @@ export default function NewAppointment() {
       return setError("Cliente nova: preencha telefone, Instagram e e-mail.");
     }
     if (!serviceId) return setError("Escolha um serviço.");
+    if (promo && !/\d/.test(promoValue)) return setError("Informe o valor promocional.");
     if (!time) return setError("Escolha o horário.");
     setSaving(true);
     try {
@@ -103,6 +108,7 @@ export default function NewAppointment() {
         time,
         notes,
         notify,
+        priceCents: promoCents,
       });
       invalidate();
       router.back();
@@ -139,7 +145,16 @@ export default function NewAppointment() {
         )}
       </Section>
 
-      <Section header="Serviço" footer={service ? serviceMeta(service) : undefined}>
+      <Section
+        header="Serviço"
+        footer={
+          promo && service
+            ? `Vale só neste agendamento, no lugar de ${formatMoney(service.price_cents)}. É o valor usado no lucro.`
+            : service
+              ? serviceMeta(service)
+              : undefined
+        }
+      >
         <GroupedPickerRow
           label="Serviço"
           value={serviceId}
@@ -149,6 +164,19 @@ export default function NewAppointment() {
             setTime("");
           }}
         />
+        {/* Promoção: só com a opção marcada o valor informado substitui o preço do serviço. */}
+        <SwitchRow label="Valor promocional?" value={promo} onValueChange={setPromo} />
+        {promo && (
+          <FormRow label="Valor">
+            <Input
+              value={promoValue}
+              onChangeText={setPromoValue}
+              placeholder={service ? formatMoney(service.price_cents) : "R$ 0,00"}
+              keyboardType="decimal-pad"
+              autoFocus
+            />
+          </FormRow>
+        )}
       </Section>
     </>
   );
@@ -206,7 +234,9 @@ export default function NewAppointment() {
       {/* Resumo do que vai ser marcado, logo acima do botão. */}
       {clientName && service && time ? (
         <Text variant="subhead" color="label2" style={{ marginBottom: 12, marginHorizontal: 4 }}>
-          {clientName} · {service.name} · {dateLabel.split(",")[0]}, {formatInTz(dayBounds(date, tz).start, "dd/MM", tz)} às {time}
+          {clientName} · {service.name} · {dateLabel.split(",")[0]}, {formatInTz(dayBounds(date, tz).start, "dd/MM", tz)} às {time} ·{" "}
+          {formatMoney(promoCents ?? service.price_cents)}
+          {promoCents !== undefined ? " (promocional)" : ""}
         </Text>
       ) : null}
       {error && <Banner>{error}</Banner>}

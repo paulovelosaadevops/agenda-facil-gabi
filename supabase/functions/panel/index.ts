@@ -35,6 +35,8 @@ const Request = z.discriminatedUnion("action", [
     time: z.string().regex(/^\d{2}:\d{2}$/, "Escolha o horário."),
     notes: z.string().trim().max(1000).default(""),
     notify: z.boolean().default(true),
+    // "Valor promocional?" marcado: este valor (em centavos) vale no lugar do preço do serviço.
+    priceCents: z.number().int().min(0, "Valor promocional inválido.").max(10_000_000).optional(),
   }),
   z.object({ action: z.literal("calendar-url"), appointmentId: z.string().uuid() }),
   z.object({ action: z.literal("push-test") }),
@@ -95,6 +97,7 @@ Deno.serve(
             notes: input.notes,
             enforceRules: false, // a profissional pode encaixar fora do expediente
             notifyClient: input.notify,
+            priceCents: input.priceCents,
           });
           return json({ id: appointment.id });
         } catch (err) {
