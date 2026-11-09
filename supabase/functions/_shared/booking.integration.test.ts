@@ -4,7 +4,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { addDays } from "date-fns";
 import { beforeAll, describe, expect, it } from "vitest";
 import { toDateKey } from "./availability.ts";
-import { BookingError, createBooking, getAvailableSlots, upsertClientProfile } from "./booking.ts";
+import { BookingError, createBooking, getAvailableSlots, updateBooking, upsertClientProfile } from "./booking.ts";
 import { ensureClientAccount } from "./client-account.ts";
 import { formatInTz } from "./format.ts";
 import type { Business, Client } from "./types.ts";
@@ -212,6 +212,34 @@ describe.runIf(run)("regras do estúdio com banco real", () => {
     expect(promo.appointment.price_cents).toBe(5000);
     const normal = await createBooking(admin, { business, serviceId, clientId: client.id, startsAt: second, source: "panel", enforceRules: false, notifyClient: false });
     expect(normal.appointment.price_cents).toBe(9000); // preço do serviço "Gel"
+  });
+
+  it("editar agendamento: muda serviço, horário e valor; recusa choque e agendamento encerrado", async () => {
+    const client = await upsertClientProfile(admin, business.id, profile("5511933330002", "Editada"));
+    const day = toDateKey(addDays(new Date(), 13), business.timezone);
+    const slots = await getAvailableSlots(admin, business, serviceId, day);
+    const { appointment } = await createBooking(admin, { business, serviceId, clientId: client.id, startsAt: slots[0], source: "panel", enforceRules: false, notifyClient: false });
+    const other = await createBooking(admin, { business, serviceId, clientId: client.id, startsAt: slots[4], source: "panel", enforceRules: false, notifyClient: false });
+
+    // O próprio horário aparece livre na edição (ignora o agendamento que está sendo editado).
+    const whileEditing = await getAvailableSlots(admin, business, serviceId, day, new Date(), appointment.id);
+    expect(whileEditing.map((s) => s.getTime())).toContain(slots[0].getTime());
+
+    const moved = await updateBooking(admin, { business, appointmentId: appointment.id, serviceId, startsAt: slots[1], notes: "remarcado", priceCents: 7000 });
+    expect(new Date(moved.starts_at).getTime()).toBe(slots[1].getTime());
+    expect(moved.price_cents).toBe(7000);
+    expect(moved.notes).toBe("remarcado");
+    expect(new Date(moved.ends_at).getTime() - slots[1].getTime()).toBe(60 * 60_000); // serviço "Gel", 1h
+
+    // Sem valor promocional, volta o preço do serviço.
+    expect((await updateBooking(admin, { business, appointmentId: appointment.id, serviceId, startsAt: slots[1] })).price_cents).toBe(9000);
+
+    // Em cima do outro agendamento: o banco recusa.
+    await expect(updateBooking(admin, { business, appointmentId: appointment.id, serviceId, startsAt: slots[4] })).rejects.toThrow(/já está ocupado/);
+
+    // Encerrado (cancelado) não se edita.
+    await admin.from("appointments").update({ status: "cancelled" }).eq("id", other.appointment.id);
+    await expect(updateBooking(admin, { business, appointmentId: other.appointment.id, serviceId, startsAt: slots[6] })).rejects.toThrow(/pendentes ou confirmados/);
   });
 
   it("combo que inclui pés (sem a marca no combo) também é só para clientes liberadas", async () => {

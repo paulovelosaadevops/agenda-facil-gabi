@@ -1,11 +1,11 @@
-// Ações do painel que precisam do servidor: confirmação no WhatsApp, IA e simulador.
+// Ações do painel que precisam do servidor: criar/editar agendamento, IA e simulador.
 // O resto do painel fala direto com o banco (protegido por RLS).
 import Anthropic from "@anthropic-ai/sdk";
 import { TZDate } from "@date-fns/tz";
 import { z } from "zod";
 import { generateCaptions, isSupportedImage } from "../_shared/ai/captions.ts";
 import { parseDateKey } from "../_shared/availability.ts";
-import { BookingError, createBooking, upsertClientProfile } from "../_shared/booking.ts";
+import { BookingError, createBooking, updateBooking, upsertClientProfile } from "../_shared/booking.ts";
 import { getEnv } from "../_shared/env.ts";
 import { normalizePhone } from "../_shared/format.ts";
 import { calendarUrl } from "../_shared/calendar.ts";
@@ -36,6 +36,16 @@ const Request = z.discriminatedUnion("action", [
     notes: z.string().trim().max(1000).default(""),
     notify: z.boolean().default(true),
     // "Valor promocional?" marcado: este valor (em centavos) vale no lugar do preço do serviço.
+    priceCents: z.number().int().min(0, "Valor promocional inválido.").max(10_000_000).optional(),
+  }),
+  // Editar agendamento (a cliente não muda): serviço, dia/horário, valor promocional e observações.
+  z.object({
+    action: z.literal("update-appointment"),
+    appointmentId: z.string().uuid(),
+    serviceId: z.string().uuid("Escolha um serviço."),
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Escolha a data."),
+    time: z.string().regex(/^\d{2}:\d{2}$/, "Escolha o horário."),
+    notes: z.string().trim().max(1000).default(""),
     priceCents: z.number().int().min(0, "Valor promocional inválido.").max(10_000_000).optional(),
   }),
   z.object({ action: z.literal("calendar-url"), appointmentId: z.string().uuid() }),
@@ -97,6 +107,25 @@ Deno.serve(
             notes: input.notes,
             enforceRules: false, // a profissional pode encaixar fora do expediente
             notifyClient: input.notify,
+            priceCents: input.priceCents,
+          });
+          return json({ id: appointment.id });
+        } catch (err) {
+          if (err instanceof BookingError) throw new HttpError(409, err.message);
+          throw err;
+        }
+      }
+
+      case "update-appointment": {
+        const [y, m, d] = parseDateKey(input.date);
+        const [hh, mm] = input.time.split(":").map(Number);
+        try {
+          const appointment = await updateBooking(db, {
+            business,
+            appointmentId: input.appointmentId,
+            serviceId: input.serviceId,
+            startsAt: new Date(new TZDate(y, m - 1, d, hh, mm, 0, business.timezone).getTime()),
+            notes: input.notes,
             priceCents: input.priceCents,
           });
           return json({ id: appointment.id });

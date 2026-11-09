@@ -65,6 +65,59 @@ export async function upsertClientProfile(db: SupabaseClient, businessId: string
   return data;
 }
 
+export interface UpdateBookingInput {
+  business: Business;
+  appointmentId: string;
+  serviceId: string;
+  startsAt: Date;
+  notes?: string;
+  /** Valor promocional; sem ele, volta a valer o preço do serviço. */
+  priceCents?: number;
+}
+
+/**
+ * Edição pela Gabi (painel): serviço, dia/horário, valor e observações. A cliente não muda.
+ * Sem as regras das clientes (como no encaixe); o banco recusa choque com outro agendamento.
+ * Mudou o horário: o lembrete por e-mail volta a ser enviado para o horário novo.
+ */
+export async function updateBooking(db: SupabaseClient, input: UpdateBookingInput) {
+  const { business } = input;
+  const { data: current, error: findError } = await db
+    .from("appointments")
+    .select("id, starts_at, status")
+    .eq("id", input.appointmentId)
+    .eq("business_id", business.id)
+    .maybeSingle();
+  if (findError) throw findError;
+  if (!current) throw new BookingError("Agendamento não encontrado.");
+  if (current.status !== "pending" && current.status !== "confirmed") {
+    throw new BookingError("Só dá para editar agendamentos pendentes ou confirmados. Reabra o agendamento primeiro.");
+  }
+
+  const service = await getService(db, business.id, input.serviceId);
+  const endsAt = new Date(input.startsAt.getTime() + service.duration_min * 60_000);
+  const moved = new Date(current.starts_at).getTime() !== input.startsAt.getTime();
+  const { data, error } = await db
+    .from("appointments")
+    .update({
+      service_id: service.id,
+      starts_at: input.startsAt.toISOString(),
+      ends_at: endsAt.toISOString(),
+      price_cents: input.priceCents ?? service.price_cents,
+      notes: input.notes ?? "",
+      ...(moved ? { reminder_sent_at: null } : {}),
+    })
+    .eq("id", current.id)
+    .eq("business_id", business.id)
+    .select("*")
+    .single();
+  if (error) {
+    if (error.code === "23P01") throw new BookingError("Esse horário já está ocupado por outro agendamento. Escolha outro.");
+    throw error;
+  }
+  return data;
+}
+
 export interface CreateBookingInput {
   business: Business;
   serviceId: string;

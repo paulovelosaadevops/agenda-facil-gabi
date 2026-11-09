@@ -55,19 +55,23 @@ export async function getService(db: SupabaseClient, businessId: string, service
   return data;
 }
 
-/** Horários livres de um serviço em um dia ("YYYY-MM-DD", calendário local do negócio). */
+/**
+ * Horários livres de um serviço em um dia ("YYYY-MM-DD", calendário local do negócio).
+ * `ignoreAppointmentId`: ao editar um agendamento, o horário dele mesmo não conta como ocupado.
+ */
 export async function getAvailableSlots(
   db: SupabaseClient,
   business: Business,
   serviceId: string,
   date: string,
   now = new Date(),
+  ignoreAppointmentId?: string,
 ): Promise<Date[]> {
   const service = await getService(db, business.id, serviceId);
   const range = dayBounds(date, business.timezone);
   const [workingHours, { busy, blocks }] = await Promise.all([
     loadWorkingHours(db, business.id),
-    loadBusy(db, business.id, range),
+    loadBusy(db, business.id, range, ignoreAppointmentId),
   ]);
   return computeSlots({
     date,

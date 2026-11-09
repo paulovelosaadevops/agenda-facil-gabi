@@ -6,7 +6,7 @@ import { DateField } from "@/components/date-calendar";
 import { GroupedPickerRow } from "@/components/grouped-picker";
 import { ScreenHeader } from "@/components/screen-header";
 import { timeOptions, TimeSelect } from "@/components/time-select";
-import { Banner, Button, FormRow, HeaderButton, Input, Loading, Screen, Section, SwitchRow, Text, TextAreaRow } from "@/components/ui";
+import { Banner, Button, FormRow, HeaderButton, Input, Loading, Row, Screen, Section, SwitchRow, Text, TextAreaRow } from "@/components/ui";
 import { dayBounds, toDateKey } from "@shared/availability.ts";
 import { formatDuration, formatInTz, formatMoney, parseMoney } from "@shared/format.ts";
 import { SERVICE_CATEGORIES, type Client, type Service } from "@shared/types.ts";
@@ -41,22 +41,13 @@ export default function NewAppointment() {
   const tz = business.timezone;
   // No computador: cliente e serviço à esquerda, data e horário à direita.
   const wide = useWindowDimensions().width >= 900;
-  const params = useLocalSearchParams<{ data?: string; cliente?: string; servico?: string }>();
+  // ?id=: editar um agendamento existente (a cliente fica fixa).
+  const params = useLocalSearchParams<{ data?: string; cliente?: string; servico?: string; id?: string }>();
+  const editingId = params.id;
   // Id da cliente escolhida no dropdown, NEW_CLIENT para cadastrar na hora, ou "" (nenhuma).
   // Veio da ficha da cliente (?cliente=): já começa com ela selecionada.
   const [clientChoice, setClientChoice] = useState(params.cliente ?? "");
   const [newName, setNewName] = useState("");
-
-  const { data } = useQuery(async () => {
-    const [clients, services] = await Promise.all([
-      supabase.from("clients").select("id, name, phone").eq("business_id", business.id).order("name").returns<ClientOption[]>(),
-      // Todos os não excluídos: a Gabi agenda também os que não aparecem para as clientes (ex.: serviço de uma cliente só).
-      supabase.from("services").select("*").eq("business_id", business.id).eq("archived", false).order("name").returns<Service[]>(),
-    ]);
-    return { clients: clients.data ?? [], services: services.data ?? [] };
-  });
-  const client = data?.clients.find((c) => c.id === clientChoice);
-
   const today = toDateKey(new Date(), tz);
   const [phone, setPhone] = useState("");
   const [whatsapp, setWhatsapp] = useState(true);
@@ -71,7 +62,38 @@ export default function NewAppointment() {
   const [promoValue, setPromoValue] = useState("");
   const [error, setError] = useState<string>();
   const [saving, setSaving] = useState(false);
-  const slots = useSlotSuggestions(business, serviceId, date);
+
+  const { data } = useQuery(async () => {
+    const [clients, services, editing] = await Promise.all([
+      supabase.from("clients").select("id, name, phone").eq("business_id", business.id).order("name").returns<ClientOption[]>(),
+      // Todos os não excluídos: a Gabi agenda também os que não aparecem para as clientes (ex.: serviço de uma cliente só).
+      supabase.from("services").select("*").eq("business_id", business.id).eq("archived", false).order("name").returns<Service[]>(),
+      editingId
+        ? supabase
+            .from("appointments")
+            .select("client_id, service_id, starts_at, price_cents, notes, services(price_cents)")
+            .eq("id", editingId)
+            .eq("business_id", business.id)
+            .maybeSingle<{ client_id: string; service_id: string; starts_at: string; price_cents: number; notes: string; services: { price_cents: number } | null }>()
+        : Promise.resolve({ data: null }),
+    ]);
+    const appt = editing.data;
+    if (appt) {
+      // Editando: preenche o formulário com o agendamento.
+      setClientChoice(appt.client_id);
+      setServiceId(appt.service_id);
+      setDate(toDateKey(new Date(appt.starts_at), tz));
+      setTime(formatInTz(appt.starts_at, "HH:mm", tz));
+      setNotes(appt.notes);
+      if (appt.services && appt.price_cents !== appt.services.price_cents) {
+        setPromo(true);
+        setPromoValue((appt.price_cents / 100).toFixed(2).replace(".", ","));
+      }
+    }
+    return { clients: clients.data ?? [], services: services.data ?? [], editingDate: appt ? toDateKey(new Date(appt.starts_at), tz) : undefined };
+  }, [editingId]);
+  const client = data?.clients.find((c) => c.id === clientChoice);
+  const slots = useSlotSuggestions(business, serviceId, date, editingId);
   const isNewClient = clientChoice === NEW_CLIENT;
 
   const services = data?.services ?? [];
@@ -98,6 +120,12 @@ export default function NewAppointment() {
     if (!time) return setError("Escolha o horário.");
     setSaving(true);
     try {
+      if (editingId) {
+        await callFunction("panel", { action: "update-appointment", appointmentId: editingId, serviceId, date, time, notes, priceCents: promoCents });
+        invalidate();
+        router.back();
+        return;
+      }
       await callFunction("panel", {
         action: "create-appointment",
         clientId: client?.id,
@@ -114,7 +142,7 @@ export default function NewAppointment() {
       invalidate();
       router.back();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Não foi possível agendar.");
+      setError(err instanceof Error ? err.message : editingId ? "Não foi possível salvar." : "Não foi possível agendar.");
       setSaving(false);
     }
   };
@@ -122,7 +150,12 @@ export default function NewAppointment() {
   const who = (
     <>
       <Section header="Cliente" footer={isNewClient ? "Cliente nova: todos os dados são obrigatórios." : undefined}>
-        <ClientPicker clients={data?.clients ?? []} value={clientChoice} onChange={setClientChoice} />
+        {/* Editando: a cliente não muda (outra cliente = outro agendamento). */}
+        {editingId ? (
+          <Row title="Cliente" detail={client?.name ?? "…"} />
+        ) : (
+          <ClientPicker clients={data?.clients ?? []} value={clientChoice} onChange={setClientChoice} />
+        )}
         {isNewClient && (
           <FormRow label="Nome">
             <Input value={newName} onChangeText={setNewName} placeholder="Nome e sobrenome" autoFocus />
@@ -190,7 +223,7 @@ export default function NewAppointment() {
       <View style={{ marginBottom: 20 }}>
         {/* Veio de um dia passado da agenda (encaixe retroativo): esse dia continua selecionável. */}
         <DateField
-          min={params.data && params.data < today ? params.data : today}
+          min={[params.data, data?.editingDate, today].filter((d): d is string => Boolean(d)).sort()[0]}
           today={today}
           value={date}
           label={dateLabel}
@@ -229,7 +262,7 @@ export default function NewAppointment() {
 
       <Section>
         <TextAreaRow value={notes} onChangeText={setNotes} placeholder="Observações" />
-        <SwitchRow label="Confirmar no WhatsApp" value={notify} onValueChange={setNotify} />
+        {!editingId && <SwitchRow label="Confirmar no WhatsApp" value={notify} onValueChange={setNotify} />}
       </Section>
 
       {/* Resumo do que vai ser marcado, logo acima do botão. */}
@@ -241,13 +274,13 @@ export default function NewAppointment() {
         </Text>
       ) : null}
       {error && <Banner>{error}</Banner>}
-      <Button title={time ? `Agendar às ${time}` : "Agendar"} onPress={save} loading={saving} />
+      <Button title={editingId ? "Salvar alterações" : time ? `Agendar às ${time}` : "Agendar"} onPress={save} loading={saving} />
     </>
   );
 
   return (
     <Screen keyboard>
-      <ScreenHeader title="Novo agendamento" left={<HeaderButton icon="close" accessibilityLabel="Cancelar" onPress={() => router.back()} />} />
+      <ScreenHeader title={editingId ? "Editar agendamento" : "Novo agendamento"} left={<HeaderButton icon="close" accessibilityLabel="Cancelar" onPress={() => router.back()} />} />
       {wide ? (
         <View style={{ flexDirection: "row", gap: 32, alignItems: "flex-start" }}>
           <View style={{ flex: 1, minWidth: 0 }}>{who}</View>

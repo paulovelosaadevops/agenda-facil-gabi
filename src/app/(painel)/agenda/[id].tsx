@@ -109,6 +109,13 @@ export default function AppointmentDetail() {
       <Section>
         {active ? (
           [
+            <Row
+              key="e"
+              leading={<RowIcon name="pencil" />}
+              title="Editar agendamento"
+              chevron
+              onPress={() => router.push({ pathname: "/agenda/novo", params: { id: appt.id } })}
+            />,
             appt.status === "pending" && (
               <Row key="ok" leading={<RowIcon name="check" />} title="Marcar como confirmado" onPress={() => setStatus("confirmed")} />
             ),

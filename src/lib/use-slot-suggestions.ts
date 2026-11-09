@@ -4,17 +4,20 @@ import { getAvailableSlots } from "@shared/slots.ts";
 import type { Business } from "@shared/types.ts";
 import { supabase } from "./supabase";
 
-/** Horários livres ("HH:MM") de um serviço num dia, para sugerir no formulário do painel. */
-export function useSlotSuggestions(business: Business, serviceId: string, date: string) {
+/**
+ * Horários livres ("HH:MM") de um serviço num dia, para sugerir no formulário do painel.
+ * `ignoreAppointmentId`: editando um agendamento, o horário dele mesmo aparece como livre.
+ */
+export function useSlotSuggestions(business: Business, serviceId: string, date: string, ignoreAppointmentId?: string) {
   // Guarda para qual serviço/dia são os horários: ao trocar o dia não mostra os do dia anterior.
   const [result, setResult] = useState<{ key: string; slots: string[] }>();
-  const key = `${serviceId}|${date}`;
+  const key = `${serviceId}|${date}|${ignoreAppointmentId ?? ""}`;
 
   useEffect(() => {
     if (!serviceId || !date) return;
     let active = true;
     // No painel ela pode encaixar em cima da hora e marcar com qualquer antecedência (o limite de dias é só das clientes).
-    getAvailableSlots(supabase, { ...business, min_advance_hours: 0, max_advance_days: 3650 }, serviceId, date)
+    getAvailableSlots(supabase, { ...business, min_advance_hours: 0, max_advance_days: 3650 }, serviceId, date, new Date(), ignoreAppointmentId)
       .then((list) => {
         if (active) setResult({ key, slots: list.map((s) => formatInTz(s, "HH:mm", business.timezone)) });
       })
@@ -24,7 +27,7 @@ export function useSlotSuggestions(business: Business, serviceId: string, date: 
     return () => {
       active = false;
     };
-  }, [serviceId, date, business, key]);
+  }, [serviceId, date, business, key, ignoreAppointmentId]);
 
   return serviceId && result?.key === key ? result.slots : undefined;
 }
