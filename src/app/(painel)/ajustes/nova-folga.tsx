@@ -1,7 +1,7 @@
 import { TZDate } from "@date-fns/tz";
 import { useRouter } from "expo-router";
 import { useMemo, useState } from "react";
-import { useWindowDimensions, View } from "react-native";
+import { View } from "react-native";
 import { DateCalendar, DateField } from "@/components/date-calendar";
 import { ScreenHeader } from "@/components/screen-header";
 import { Segmented } from "@/components/segmented";
@@ -39,8 +39,6 @@ export default function NewTimeOff() {
   const router = useRouter();
   const business = useBusiness();
   const tz = business.timezone;
-  // No computador, calendário à esquerda e detalhes à direita.
-  const wide = useWindowDimensions().width >= 900;
   const today = useMemo(() => formatInTz(new Date(), "yyyy-MM-dd", tz), [tz]);
   const [day, setDay] = useState(today);
   const [until, setUntil] = useState<string>();
@@ -113,7 +111,6 @@ export default function NewTimeOff() {
     <>
       {byTime ? (
         <View style={{ marginBottom: 24 }}>
-          {wide && <Text variant="headline">{dayLabel}</Text>}
           <Text variant="footnote" color="label2" style={{ marginTop: 2, marginBottom: 12 }}>
             Toque nos horários que quer bloquear; os riscados já estão ocupados.
           </Text>
@@ -181,17 +178,15 @@ export default function NewTimeOff() {
 
       <Segmented values={[...MODES]} selectedIndex={mode} onChange={changeMode} />
 
-      <View style={wide ? { flexDirection: "row", gap: 32, alignItems: "flex-start" } : undefined}>
-        <View style={wide ? { width: 400 } : { marginBottom: 24 }}>
-          {/* Período precisa do mês aberto (início e fim); um dia só recolhe no celular. */}
-          {range ? (
-            <DateCalendar min={today} start={day} end={until} range onChange={changeDates} />
-          ) : (
-            <DateField min={today} today={today} value={day} label={dayLabel} collapsible={!wide} onChange={(d) => changeDates(d)} />
-          )}
-        </View>
-        <View style={wide ? { flex: 1, minWidth: 0 } : undefined}>{details}</View>
+      {/* Formulário flutuante (uma coluna). Período precisa do mês aberto (início e fim); um dia só fica recolhido. */}
+      <View style={{ marginBottom: 24 }}>
+        {range ? (
+          <DateCalendar min={today} start={day} end={until} range onChange={changeDates} />
+        ) : (
+          <DateField min={today} today={today} value={day} label={dayLabel} collapsible onChange={(d) => changeDates(d)} />
+        )}
       </View>
+      {details}
     </Screen>
   );
 }

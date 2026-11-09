@@ -23,8 +23,19 @@ export function useStackOptions(): StackOptions {
   };
 }
 
-/** Formulários: cartão modal do iOS (pageSheet), tela cheia no Android, página na web. */
+/**
+ * Formulários flutuantes: cartão modal no iOS e Android; no site, janela centralizada no computador e painel
+ * que sobe de baixo no celular (modal web do Expo Router, ligado por EXPO_UNSTABLE_WEB_MODAL nos .env).
+ */
 export const modalOptions = {
   presentation: "modal",
   headerLargeTitleEnabled: false,
+  sheetCornerRadius: 24,
+  webModalStyle: {
+    width: 560,
+    minWidth: 320,
+    border: "none",
+    overlayBackground: "rgba(0, 0, 0, 0.45)",
+    shadow: "drop-shadow(0 18px 48px rgba(0, 0, 0, 0.28))",
+  },
 } as const;

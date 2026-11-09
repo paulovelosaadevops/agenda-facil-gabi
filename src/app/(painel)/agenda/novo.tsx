@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
-import { useWindowDimensions, View } from "react-native";
+import { View } from "react-native";
 import { ClientPicker, NEW_CLIENT } from "@/components/client-picker";
 import { DateField } from "@/components/date-calendar";
 import { GroupedPickerRow } from "@/components/grouped-picker";
@@ -41,8 +41,6 @@ export default function NewAppointment() {
   const router = useRouter();
   const business = useBusiness();
   const tz = business.timezone;
-  // No computador: cliente e serviço à esquerda, data e horário à direita.
-  const wide = useWindowDimensions().width >= 900;
   // ?id=: editar um agendamento existente (a cliente fica fixa).
   const params = useLocalSearchParams<{ data?: string; cliente?: string; servico?: string; id?: string }>();
   const editingId = params.id;
@@ -270,7 +268,8 @@ export default function NewAppointment() {
           today={today}
           value={date}
           label={dateLabel}
-          collapsible={!wide}
+          // Formulário flutuante (uma coluna): o dia fica recolhido, com Hoje/Amanhã e "Trocar".
+          collapsible
           onChange={(d) => {
             setDate(d);
             setTime("");
@@ -278,12 +277,6 @@ export default function NewAppointment() {
         />
       </View>
 
-      {/* No celular o dia já aparece no campo recolhido acima. */}
-      {wide && (
-        <Text variant="headline" style={{ marginBottom: 10, marginHorizontal: 4 }}>
-          {dateLabel}
-        </Text>
-      )}
       <View style={{ marginBottom: 20 }}>
         {!serviceId ? (
           <Banner tone="info">Escolha o serviço para ver os horários livres.</Banner>
@@ -325,17 +318,8 @@ export default function NewAppointment() {
   return (
     <Screen keyboard>
       <ScreenHeader title={editingId ? "Editar agendamento" : "Novo agendamento"} left={<HeaderButton icon="close" accessibilityLabel="Cancelar" onPress={() => router.back()} />} />
-      {wide ? (
-        <View style={{ flexDirection: "row", gap: 32, alignItems: "flex-start" }}>
-          <View style={{ flex: 1, minWidth: 0 }}>{who}</View>
-          <View style={{ flex: 1, minWidth: 0, maxWidth: 480 }}>{when}</View>
-        </View>
-      ) : (
-        <>
-          {who}
-          {when}
-        </>
-      )}
+      {who}
+      {when}
     </Screen>
   );
 }
