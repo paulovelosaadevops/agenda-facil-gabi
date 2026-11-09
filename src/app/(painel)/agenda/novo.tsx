@@ -18,7 +18,7 @@ import { useSlotSuggestions } from "@/lib/use-slot-suggestions";
 type ClientOption = Pick<Client, "id" | "name" | "phone">;
 
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
-const serviceMeta = (s: Service) => `${formatDuration(s.duration_min)} · ${formatMoney(s.price_cents)}`;
+const serviceMeta = (s: Service) => `${formatDuration(s.duration_min)} · ${formatMoney(s.price_cents)}${s.active ? "" : " · só no painel"}`;
 
 const toMin = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
 const toTime = (min: number) => `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
@@ -50,7 +50,8 @@ export default function NewAppointment() {
   const { data } = useQuery(async () => {
     const [clients, services] = await Promise.all([
       supabase.from("clients").select("id, name, phone").eq("business_id", business.id).order("name").returns<ClientOption[]>(),
-      supabase.from("services").select("*").eq("business_id", business.id).eq("active", true).order("name").returns<Service[]>(),
+      // Todos os não excluídos: a Gabi agenda também os que não aparecem para as clientes (ex.: serviço de uma cliente só).
+      supabase.from("services").select("*").eq("business_id", business.id).eq("archived", false).order("name").returns<Service[]>(),
     ]);
     return { clients: clients.data ?? [], services: services.data ?? [] };
   });
